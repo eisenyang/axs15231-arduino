@@ -9,6 +9,12 @@
 #define PIN_NUM_RST 13
 #define PIN_NUM_BCKL (-1)
 
+#define LCD_WIDTH 172
+#define LCD_HEIGHT 640
+
+#define SPI_FREQUENCY 32 * 1000 * 1000
+
+// Colors
 #define WHITE 0xFFFF
 #define YELLOW 0xFFE0
 #define BRRED 0XFC07
@@ -20,11 +26,6 @@
 #define GREEN 0x07E0
 #define BLUE 0x001F
 #define BLACK 0x0000
-
-#define SPI_FREQUENCY 32 * 1000 * 1000
-
-#define LCD_WIDTH 172
-#define LCD_HEIGHT 640
 
 void lcd_init();
 void lcd_write_cmd(uint8_t command);

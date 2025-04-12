@@ -59,7 +59,7 @@ void loop()
             spriteTextManager.draw2LCD(x,address,color);
         }
     }
-    spriteTextManager.scrollStart(address-1);
+    spriteTextManager.scrollStart(address+1);
     y++;
     address--;
     delay(10);

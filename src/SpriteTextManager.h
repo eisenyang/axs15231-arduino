@@ -5,13 +5,14 @@
 #include <SPI.h>
 #include "lcd.h"
 
-#define SPRITE_WIDTH 40
-#define SPRITE_HEIGHT 40
+#define SPRITE_WIDTH 160
+#define SPRITE_HEIGHT 160
 
 class SpriteTextManager{
     private:
         TFT_eSPI *tft;
         TFT_eSprite *sprite;
+        TFT_eSprite *sprite_rotate;
     public:
         SpriteTextManager();
         ~SpriteTextManager();
@@ -20,10 +21,12 @@ class SpriteTextManager{
         bool createSprite(uint16_t width, uint16_t height,uint16_t colorDepth);
         void fillScreen(uint16_t color);
         void loadFont(const uint8_t *font_data);
-        void drawString(const String &string);
+        void drawCenterString(const String &string);
         void setScrollWindow(int16_t top_fixed,int16_t scroll_content,int16_t bottom_fixed);
         void scrollStart(int16_t address);
         void draw2LCD(int16_t x,int16_t y,uint16_t color);
+        void clearSprite();
         uint16_t getPixel(int16_t x,int16_t y);
+        void rotate90AndFlip180();
 };
 #endif

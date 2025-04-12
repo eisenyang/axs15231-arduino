@@ -1,0 +1,159 @@
+#include <Arduino.h>
+#include <FS.h>
+#include <TFT_eSPI.h>
+#include "LcdSpriteManager.h"
+#include "lcd.h"
+#include "simkai28.h"
+LcdSpriteManager lcdSpriteManager;
+
+
+
+
+
+// 在屏幕中间绘制一个方块
+void drawCenteredBox(uint16_t boxWidth, uint16_t boxHeight, uint16_t borderColor, uint16_t fillColor)
+{
+  // 计算中心位置
+  uint16_t centerX = LCD_WIDTH / 2;
+  uint16_t centerY = LCD_HEIGHT / 2;
+
+  // 计算方块的左上角和右下角坐标
+  uint16_t x1 = centerX - (boxWidth / 2);
+  uint16_t y1 = centerY - (boxHeight / 2);
+  uint16_t x2 = x1 + boxWidth;
+  uint16_t y2 = y1 + boxHeight;
+
+  // 确保坐标不超出屏幕范围
+  if (x1 < 0) x1 = 0;
+  if (y1 < 0) y1 = 0;
+  if (x2 >= LCD_WIDTH) x2 = LCD_WIDTH - 1;
+  if (y2 >= LCD_HEIGHT) y2 = LCD_HEIGHT - 1;
+
+  // 绘制方块
+  lcd_test_draw_frame(x1, y1, x2, y2, borderColor, fillColor);
+}
+
+void setup()
+{
+    Serial.begin(115200);
+    while (!Serial)
+    {
+        delay(100);
+    }
+
+    //lcd_init();
+    lcdSpriteManager.init();
+    //lcd_test_draw_frame(0, 0, LCD_WIDTH, LCD_HEIGHT, GREEN, BLACK);
+    //lcd_clear_screen(BLACK);
+    lcdSpriteManager.fillScreen(TFT_BLACK);
+    lcdSpriteManager.loadFont(simkai28);
+    lcdSpriteManager.drawString("幸福安康，身体健康！", 0, 0);
+    // lcdSpriteManager.update();
+    // lcdSpriteManager.draw_rectangle(0, 60, 100, 100, RED, BLACK);
+    // lcdSpriteManager.draw_rectangle(0, 160, 100, 100, BLUE, BLACK);
+    //lcdSpriteManager.draw_pixel(0, 0, RED);
+
+
+    //
+
+
+    lcdSpriteManager.set_scroll_window(0, LCD_HEIGHT,  0);
+}
+
+void loop()
+{
+
+    static uint16_t address = LCD_HEIGHT;
+    static bool is_draw = true;
+    // if (is_draw_sine)
+    // {
+    //     int y = address+1;
+    //     int x = getSineX(y);
+    //     lcdSpriteManager.draw_pixel(x, y, TFT_RED);
+    //     if (y >= LCD_HEIGHT)
+    //     {
+    //         is_draw_sine = false;
+    //     }
+    //     Serial.println(y);
+    // }
+
+    // for (int i = 0; i < LCD_WIDTH && is_draw; i++)
+    // {
+    //     uint16_t color = TFT_RED;
+    //     int y = address+1;
+    //     if(y == 0){
+    //         color = TFT_GREEN;
+    //         lcdSpriteManager.draw_pixel(i, y, TFT_GREEN);
+    //         Serial.println("green");
+    //     }
+    //     else if (y == 640){
+    //         color = TFT_YELLOW;
+    //         lcdSpriteManager.draw_pixel(i, y, TFT_YELLOW);
+    //         Serial.println("yellow");
+    //     }else if (y == 641){
+    //         color = TFT_BLUE;
+    //         lcdSpriteManager.draw_pixel(i, y, TFT_BLUE);
+    //         Serial.println("blue");
+    //     }
+    //     //lcdSpriteManager.draw_pixel(i, 50, TFT_BLUE);
+    //     // if(y == 0){
+    //     //     is_draw = false;
+    //     // }
+    // }
+
+    if (address <= 0)
+    {
+        address = LCD_HEIGHT;
+    }
+   
+    
+
+
+    is_draw = false;
+    lcdSpriteManager.scroll_start(address-1);
+    for (int i = 0; i < LCD_WIDTH; i++)
+    {
+
+        uint16_t color = lcdSpriteManager.getPixel(i,LCD_HEIGHT - address);
+        lcdSpriteManager.draw_pixel(i, address, color);
+
+    }
+    address--;
+    delay(10);
+    
+}
+
+// void setup()
+// {
+//     Serial.begin(115200);
+//     while (!Serial)
+//     {
+//         delay(100);
+//     }
+//     lcdSpriteManager.init();
+//     lcdSpriteManager.fillScreen(TFT_BLACK);
+//     lcdSpriteManager.drawLine(0, 0, LCD_WIDTH-1, LCD_HEIGHT-100, TFT_RED);
+//     lcdSpriteManager.drawCircle(100, 100, 50, TFT_GREEN);
+//     lcdSpriteManager.drawRect(0, 200, 100, 300, TFT_BLUE);
+//     lcdSpriteManager.setTextColor(TFT_WHITE);
+//     lcdSpriteManager.setTextFont(2);
+//     lcdSpriteManager.setTextSize(2);
+//     lcdSpriteManager.setTextDatum(TL_DATUM);
+//     lcdSpriteManager.drawString("hello world", 0, 60);
+
+//     // Convert FONT_NISS to char* type for compatibility
+   
+//     // lcdSpriteManager.drawBitmap(10, 20, str1, 16, 16, TFT_YELLOW, TFT_BLACK);
+//     // lcdSpriteManager.drawBitmap(25, 20, str2, 16, 16, TFT_YELLOW, TFT_BLACK);
+//     int16_t h = 100;
+//     lcdSpriteManager.fillRectHGradient(0, LCD_HEIGHT-h, LCD_WIDTH, h, TFT_GREEN, TFT_BLUE);
+//     //lcdSpriteManager.drawString("你好", 100, 200);
+//     lcdSpriteManager.loadFont(simkai28);
+//     lcdSpriteManager.drawString("幸福安康，身体健康！", 0, 10);
+//     lcdSpriteManager.update();
+// }
+
+// void loop()
+// {
+    
+// }

@@ -1,0 +1,75 @@
+#include <Arduino.h>
+#include <FS.h>
+#include <TFT_eSPI.h>
+#include "LcdSpriteManager.h"
+#include "lcd.h"
+#include "simkai28.h"
+LcdSpriteManager lcdSpriteManager;
+
+
+
+
+
+
+// void setup()
+// {
+//     Serial.begin(115200);
+//     while (!Serial)
+//     {
+//         delay(100);
+//     }
+
+//     lcd_init();
+//     lcd_test_draw_frame(0, 0, LCD_WIDTH, LCD_HEIGHT, GREEN, BLACK);
+//     lcd_set_scroll_window(0, LCD_HEIGHT, 0);
+// }
+
+// void loop()
+// {
+
+//     static uint16_t address = LCD_HEIGHT;
+//     lcd_test_draw_top_marker(85, RED, BLUE);
+//     lcd_scroll_start(address);
+//     address--;
+
+//     if (address <= 0)
+//     {
+//         address = LCD_HEIGHT;
+//     }
+    
+// }
+
+// void setup()
+// {
+//     Serial.begin(115200);
+//     while (!Serial)
+//     {
+//         delay(100);
+//     }
+//     lcdSpriteManager.init();
+//     lcdSpriteManager.fillScreen(TFT_BLACK);
+//     lcdSpriteManager.drawLine(0, 0, LCD_WIDTH-1, LCD_HEIGHT-100, TFT_RED);
+//     lcdSpriteManager.drawCircle(100, 100, 50, TFT_GREEN);
+//     lcdSpriteManager.drawRect(0, 200, 100, 300, TFT_BLUE);
+//     lcdSpriteManager.setTextColor(TFT_WHITE);
+//     lcdSpriteManager.setTextFont(2);
+//     lcdSpriteManager.setTextSize(2);
+//     lcdSpriteManager.setTextDatum(TL_DATUM);
+//     lcdSpriteManager.drawString("hello world", 0, 60);
+
+//     // Convert FONT_NISS to char* type for compatibility
+   
+//     // lcdSpriteManager.drawBitmap(10, 20, str1, 16, 16, TFT_YELLOW, TFT_BLACK);
+//     // lcdSpriteManager.drawBitmap(25, 20, str2, 16, 16, TFT_YELLOW, TFT_BLACK);
+//     int16_t h = 100;
+//     lcdSpriteManager.fillRectHGradient(0, LCD_HEIGHT-h, LCD_WIDTH, h, TFT_GREEN, TFT_BLUE);
+//     //lcdSpriteManager.drawString("你好", 100, 200);
+//     lcdSpriteManager.loadFont(simkai28);
+//     lcdSpriteManager.drawString("幸福安康，身体健康！", 0, 10);
+//     lcdSpriteManager.update();
+// }
+
+// void loop()
+// {
+    
+// }

@@ -3,7 +3,7 @@
 #include <TFT_eSPI.h>
 #include "SpriteTextManager.h"
 #include "lcd.h"
-#include "hkjgxjh160.h"
+#include "simkai160.h"
 SpriteTextManager spriteTextManager;
 
 void setup()
@@ -15,8 +15,8 @@ void setup()
     }
     spriteTextManager.init();
     spriteTextManager.fillScreen(TFT_BLACK);
-    spriteTextManager.loadFont(hkjgxjh160);
-    
+    spriteTextManager.loadFont(simkai160);
+    spriteTextManager.blockLcdWrite(0,0,LCD_WIDTH-1,LCD_HEIGHT-1);
     spriteTextManager.setScrollWindow(0, LCD_HEIGHT,  0);
 }
 
@@ -45,7 +45,7 @@ void loop()
             for(int y = 0; y < SPRITE_HEIGHT; y++){
                 spriteTextManager.drawCenterString(draw_string[1]);
                 uint16_t color = spriteTextManager.getPixel(x,y);
-                spriteTextManager.draw2LCD(x,y,color);
+                spriteTextManager.drawPixel2LCD(x,y,color);
                 if(color != 0){
                     Serial.print("*");
                 }else{
@@ -56,17 +56,41 @@ void loop()
         }
     }
     
+    unsigned long startTimeTotal = micros();
     for (int x = 0; x < SPRITE_WIDTH  && draw_string_index < draw_string_len; x++)
     { 
 
         if(y < SPRITE_HEIGHT){
             if(is_draw == false){
                 spriteTextManager.drawCenterString(draw_string[draw_string_index]);
-                //spriteTextManager.rotate90AndFlip180();
                 is_draw = true;
             }
-            uint16_t color = spriteTextManager.getPixel(x,y);
-            spriteTextManager.draw2LCD(x,address+1,color);
+            
+            // Start timing
+            unsigned long startTime = micros();
+            uint16_t color = spriteTextManager.getPixel(y,x);
+            unsigned long getPixelTime = micros() - startTime;
+            
+            // Measure draw2LCD time
+            startTime = micros();
+            //spriteTextManager.drawPixel2LCD(x+20,address+1,color);
+            if(x == 0){
+                //spriteTextManager.blockRowWrite(address+1);
+            }
+            spriteTextManager.drawPixel2LCD(x+20,address+1,color);
+            unsigned long drawTime = micros() - startTime;
+            
+            //Print timing information every 100 iterations
+            static int counter = 0;
+            if (++counter % 100 == 0) {
+                Serial.print("One getPixel Function Run time: ");
+                Serial.print(getPixelTime);
+                Serial.print("µs, One draw2LCD Function Run time: ");
+                Serial.print(drawTime);
+                Serial.println("µs");
+            }
+
+
         }else if(y >= SPRITE_HEIGHT){
             draw_string_index++;
             is_draw = false;
@@ -74,6 +98,10 @@ void loop()
             spriteTextManager.clearSprite();
         }
     }
+    unsigned long endTimeTotal = micros();
+    Serial.print("One For Run Total time: ");
+    Serial.print(endTimeTotal - startTimeTotal);
+    Serial.println("µs");
     if(draw_string_index >= draw_string_len){
         draw_string_index = 0;
         is_draw = false;
@@ -83,6 +111,11 @@ void loop()
     spriteTextManager.scrollStart(address);
     y++;
     address--;
-    delay(2);
+
+    unsigned long endTime = micros();
+    Serial.print("One Loop Run Total time: ");
+    Serial.print(endTime - startTimeTotal);
+    Serial.println("µs");
+    delay(10);
     
 }

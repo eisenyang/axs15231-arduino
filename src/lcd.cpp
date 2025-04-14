@@ -153,8 +153,11 @@ void lcd_test_draw_frame(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uin
     }
 }
 
+void lcd_block_write_row(uint16_t y){
+    lcd_block_write(0, y, LCD_WIDTH - 1, y);
+}
 void lcd_draw_pixel(uint16_t x, uint16_t y, uint16_t color) {
-    lcd_block_write(x, y, x, y);
+    //lcd_block_write(x, y, x, y);
     lcd_write_color(color);
 }
 
@@ -178,43 +181,18 @@ void lcd_test_draw_top_marker(uint16_t x, uint16_t front_color, uint16_t back_co
         }
     }
 }
-
+void lcd_draw_row(uint16_t y,uint16_t color){
+    lcd_block_write(0, y, LCD_WIDTH - 1, y);
+    for (int x = 0; x < LCD_WIDTH; x++)
+    {
+        lcd_write_color(color);
+    }
+}
 void lcd_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color) {
     lcd_block_write(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
     uint16_t w = LCD_WIDTH;
     uint16_t h = LCD_HEIGHT;
 
-
-    // if(x1 == x2){
-    //     for(int x = 0; x < w; x++){
-    //         for(int y = 0; y < h; y++){
-    //             if(y >= y1 && y <= y2){
-    //                 if(x == x1){
-    //                     lcd_write_color(color);
-    //                 }
-    //                 else{
-    //                     lcd_write_color(BLACK);
-    //                 }
-    //             }
-                
-    //         }
-    //     }
-    // }
-    // else if(y1 == y2){
-    //     for(int x = 0; x < w; x++){
-    //         for(int y = 0; y < h; y++){
-    //             if(y == y1 && x >= x1 && x <= x2){
-    //                 lcd_write_color(color);
-    //             }
-    //             else{
-    //                 lcd_write_color(BLACK);
-    //             }
-    //         }
-    //     }
-    // }
-    // else{
-    //     lcd_write_color(BLACK);
-    // }
     for (int y = 0; y < h; y++)
     {
         for (int x = 0; x < w; x++)

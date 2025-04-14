@@ -12,7 +12,7 @@ class SpriteTextManager{
     private:
         TFT_eSPI *tft;
         TFT_eSprite *sprite;
-        TFT_eSprite *sprite_rotate;
+        //TFT_eSprite *sprite_rotate;
     public:
         SpriteTextManager();
         ~SpriteTextManager();
@@ -24,9 +24,11 @@ class SpriteTextManager{
         void drawCenterString(const String &string);
         void setScrollWindow(int16_t top_fixed,int16_t scroll_content,int16_t bottom_fixed);
         void scrollStart(int16_t address);
-        void draw2LCD(int16_t x,int16_t y,uint16_t color);
+        void drawPixel2LCD(int16_t x,int16_t y,uint16_t color);
+        void blockRowWrite(uint16_t y);
+        void blockLcdWrite(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1);
         void clearSprite();
+        void drawRow2LCD(uint16_t y,uint16_t color);
         uint16_t getPixel(int16_t x,int16_t y);
-        void rotate90AndFlip180();
 };
 #endif

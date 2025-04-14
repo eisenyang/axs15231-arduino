@@ -59,7 +59,7 @@ void SpriteTextManager::drawCenterString(const String &string){
         sprite->setTextFont(2); // 使用较大的内置字体
         sprite->setTextDatum(TL_DATUM);
 
-          // 计算文本尺寸
+        //   // 计算文本尺寸
         //String text = "Hello World";
         uint16_t textWidth = sprite->textWidth(string);
         uint16_t textHeight = sprite->fontHeight();
@@ -71,7 +71,6 @@ void SpriteTextManager::drawCenterString(const String &string){
         // 绘制文本
         sprite->fillSprite(TFT_BLACK);
         sprite->drawString(string, x, y);
-        //sprite->pushSprite(0, 0); 
     }
 }
 
@@ -88,13 +87,14 @@ void SpriteTextManager::scrollStart(int16_t address){
 }
 
 void SpriteTextManager::drawPixel2LCD(int16_t x,int16_t y,uint16_t color){
-    lcd_draw_pixel(x, y, color);
+    lcd_block_write(x, y, x, y);
+    lcd_write_color(color);
 }
 void SpriteTextManager::drawRow2LCD(uint16_t y,uint16_t color){
     lcd_draw_row(y, color);
 }
-void SpriteTextManager::blockRowWrite(uint16_t y){
-    lcd_block_write_row(y);
+void SpriteTextManager::setRowAddress(uint16_t x_offset,uint16_t y){
+    lcd_block_write(x_offset,y,LCD_WIDTH-1,y);
 }
 void SpriteTextManager::blockLcdWrite(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1){
     lcd_block_write(x0, y0, x1, y1);
@@ -110,4 +110,14 @@ void SpriteTextManager::clearSprite(){
     if (sprite != nullptr) {
         sprite->fillScreen(TFT_BLACK);
     }
+}
+
+void SpriteTextManager::enableWriteColor(){
+    lcd_start_write_color();
+}
+void SpriteTextManager::disableWriteColor(){
+    lcd_end_write_color();
+}
+void SpriteTextManager::writeColor(uint16_t color){   
+    lcd_continue_write_color(color);
 }

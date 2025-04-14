@@ -48,6 +48,9 @@ void lcd_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t 
 void lcd_draw_pixel(uint16_t x, uint16_t y, uint16_t color);
 void lcd_draw_row(uint16_t y,uint16_t color);
 void lcd_block_write_row(uint16_t y);
+void lcd_start_write_color();
+void lcd_end_write_color();
+void lcd_continue_write_color(uint16_t color);
 // void lcd_draw_rectangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color);
 // void lcd_draw_circle(uint16_t x, uint16_t y, uint16_t radius, uint16_t color);
 // void lcd_draw_triangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t x3, uint16_t y3, uint16_t color);

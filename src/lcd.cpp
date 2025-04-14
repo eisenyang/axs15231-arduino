@@ -98,6 +98,24 @@ void lcd_write_color(uint16_t color)
     LCD_CS_H;
 }
 
+void lcd_start_write_color()
+{
+    LCD_CS_L;
+    LCD_DC_H;
+    lcd_spi->beginTransaction(SPISettings(SPI_FREQUENCY, MSBFIRST, SPI_MODE0));
+    
+    
+}
+void lcd_end_write_color()
+{
+    lcd_spi->endTransaction();
+    LCD_CS_H;
+}
+void lcd_continue_write_color(uint16_t color)
+{
+    lcd_spi->write(color >> 8);
+    lcd_spi->write(color & 0xff);
+}
 void lcd_set_scroll_window(uint16_t top_fixed, uint16_t scroll_content, uint16_t bottom_fixed)
 {
     lcd_write_cmd(0x33);

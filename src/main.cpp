@@ -17,6 +17,14 @@ void setup()
     spriteTextManager.fillScreen(TFT_BLACK);
     spriteTextManager.loadFont(simkai160);
     spriteTextManager.setScrollWindow(0, LCD_HEIGHT, 0);
+
+    Serial.printf("Total PSRAM: %d bytes\n", ESP.getPsramSize());
+    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
+    Serial.printf("Total heap: %d bytes\n", ESP.getHeapSize());
+    Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+    Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
+    Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
+    Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
 }
 
 void loop()
@@ -79,7 +87,7 @@ void loop()
             // Measure draw2LCD time
             startTime = micros();
             // spriteTextManager.drawPixel2LCD(x+20,address+1,color);
-            uint16_t y_offset = address + 1;
+            uint16_t y_offset = address-1;
 
             if (x == 0)
             {

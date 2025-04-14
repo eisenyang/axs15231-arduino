@@ -55,7 +55,7 @@ void SpriteTextManager::loadFont(const uint8_t *font_data){
 void SpriteTextManager::drawCenterString(const String &string){
     if (sprite != nullptr) {
           // 设置文本属性
-        sprite->setTextColor(TFT_WHITE, TFT_BLACK);
+        sprite->setTextColor(TFT_RED, TFT_BLACK);
         sprite->setTextFont(2); // 使用较大的内置字体
         sprite->setTextDatum(TL_DATUM);
 

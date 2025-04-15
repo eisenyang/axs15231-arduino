@@ -9,8 +9,8 @@
 #include "simkai160.h"
 #include "truetype_Arduino.h"
 SpriteTextManager spriteTextManager;
-#define WIDTH_BYTES 8
-#define HEIGHT_PIXELS 40
+#define WIDTH_BYTES 20
+#define HEIGHT_PIXELS 160
 #define DISPLAY_HEIGHT HEIGHT_PIXELS
 #define FRAMEBUFFER_SIZE (WIDTH_BYTES * HEIGHT_PIXELS)
 #define BITS_PER_PIXEL 1 // either 1, 4, or 8
@@ -114,7 +114,6 @@ void display_bitmap_rotate_90(uint8_t *framebuffer, uint16_t width_in_bytes, uin
 
     // 逆时针旋转90度显示位图
     for (uint16_t x = WIDTH_BYTES * 8 - 1; x < WIDTH_BYTES * 8; x--) { // 注意：使用无符号类型，需要有效处理边界
-        Serial.println();
         for (uint16_t y = 0; y < HEIGHT_PIXELS; y++) {
             // 计算原始位图中的字节索引和位掩码
             uint16_t byte_index = y * WIDTH_BYTES + (x / 8);
@@ -124,12 +123,10 @@ void display_bitmap_rotate_90(uint8_t *framebuffer, uint16_t width_in_bytes, uin
             // 检查该位是否为1
             if (framebuffer[byte_index] & bit_mask) {
                 // 位为1的处理
-                Serial.print(" ");
                 // 旋转后坐标：原来的x变为y，原来的y变为(WIDTH_BYTES*8-1-x)
                 spriteTextManager.drawPixel2LCD(y, WIDTH_BYTES * 8 - 1 - x, TFT_WHITE);
             } else {
                 // 位为0的处理
-                Serial.print("*");
                 spriteTextManager.drawPixel2LCD(y, WIDTH_BYTES * 8 - 1 - x, TFT_BLACK);
             }
         }
@@ -216,15 +213,15 @@ void setup()
     }
     else
     {
-      truetype.setCharacterSize(30);
+      truetype.setCharacterSize(160);
       truetype.setTextBoundary(0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
       truetype.setCharacterSpacing(5);
       truetype.setTextColor(0x01, 0x01);
       truetype.textDraw(0, 0, L"福");
       //print_bitmap(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
       //print_bitmap_row_column(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-      display_bitmap(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-
+      //display_bitmap(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
+      display_bitmap_rotate_90(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
     
     }
     truetype.end();

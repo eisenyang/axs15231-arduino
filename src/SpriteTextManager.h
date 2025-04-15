@@ -33,5 +33,6 @@ class SpriteTextManager{
         void clearSprite();
         void drawRow2LCD(uint16_t y,uint16_t color);
         uint16_t getPixel(int16_t x,int16_t y);
+        void setPixel(int16_t x,int16_t y,uint16_t color);
 };
 #endif

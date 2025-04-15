@@ -121,3 +121,9 @@ void SpriteTextManager::disableWriteColor(){
 void SpriteTextManager::writeColor(uint16_t color){   
     lcd_continue_write_color(color);
 }
+
+void SpriteTextManager::setPixel(int16_t x,int16_t y,uint16_t color){
+    if (sprite != nullptr) {
+        sprite->drawPixel(x, y, color);
+    }
+}

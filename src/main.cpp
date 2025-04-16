@@ -7,7 +7,7 @@
 #include <FS.h>
 #include <LittleFS.h>
 #include "simkai160.h"
-#include "truetype_Arduino.h"
+#include "TruetypeManager.h"
 SpriteTextManager spriteTextManager;
 #define WIDTH_BYTES 20
 #define HEIGHT_PIXELS 160

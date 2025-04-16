@@ -11,11 +11,12 @@
 SpriteTextManager spriteTextManager;
 #define WIDTH_BYTES 20
 #define HEIGHT_PIXELS 160
+#define WIDTH_PIXELS 160
 #define DISPLAY_HEIGHT HEIGHT_PIXELS
 #define FRAMEBUFFER_SIZE (WIDTH_BYTES * HEIGHT_PIXELS)
 #define BITS_PER_PIXEL 1 // either 1, 4, or 8
 #define DISPLAY_WIDTH (WIDTH_BYTES * (8 / BITS_PER_PIXEL))
-
+uint8_t *framebuffer;
 // #define WIDTH_BYTES 20
 // #define HEIGHT_PIXELS 160
 // #define DISPLAY_HEIGHT HEIGHT_PIXELS
@@ -109,11 +110,22 @@ void display_bitmap(uint8_t *framebuffer, uint16_t width_in_bytes, uint16_t heig
     }
 }
 
+
+uint16_t get_bitmap_color(uint8_t *framebuffer, uint16_t x, uint16_t y) {
+    uint16_t byte_index = y * WIDTH_BYTES + (x / 8);
+    uint8_t bit_position = 7 - (x % 8); // 从高位到低位
+    uint8_t bit_mask = _BV(bit_position);
+    if (framebuffer[byte_index] & bit_mask) {
+        return TFT_WHITE;
+    } else {
+        return TFT_BLACK;
+    }
+}
 void display_bitmap_rotate_90(uint8_t *framebuffer, uint16_t width_in_bytes, uint16_t height_in_pixels) {
 
 
     // 逆时针旋转90度显示位图
-    for (uint16_t x = WIDTH_BYTES * 8 - 1; x < WIDTH_BYTES * 8; x--) { // 注意：使用无符号类型，需要有效处理边界
+    for (uint16_t x = WIDTH_PIXELS - 1; x < WIDTH_PIXELS; x--) { // 注意：使用无符号类型，需要有效处理边界
         for (uint16_t y = 0; y < HEIGHT_PIXELS; y++) {
             // 计算原始位图中的字节索引和位掩码
             uint16_t byte_index = y * WIDTH_BYTES + (x / 8);
@@ -124,10 +136,10 @@ void display_bitmap_rotate_90(uint8_t *framebuffer, uint16_t width_in_bytes, uin
             if (framebuffer[byte_index] & bit_mask) {
                 // 位为1的处理
                 // 旋转后坐标：原来的x变为y，原来的y变为(WIDTH_BYTES*8-1-x)
-                spriteTextManager.drawPixel2LCD(y, WIDTH_BYTES * 8 - 1 - x, TFT_WHITE);
+                spriteTextManager.drawPixel2LCD(y, WIDTH_PIXELS - 1 - x, TFT_WHITE);
             } else {
                 // 位为0的处理
-                spriteTextManager.drawPixel2LCD(y, WIDTH_BYTES * 8 - 1 - x, TFT_BLACK);
+                spriteTextManager.drawPixel2LCD(y, WIDTH_PIXELS - 1 - x, TFT_BLACK);
             }
         }
     }
@@ -183,24 +195,25 @@ void setup()
         delay(100);
     }
 
-
-    if (checkFileExists("/simhei.ttf"))
-    {
-        Serial.println("文件存在");
-    }
-    else
-    {
-        Serial.println("文件不存在");
-    }
+    //以无所得故，菩提萨埵，依般若波罗蜜多故，心无罣碍；无罣碍故，无有恐怖，远离颠倒梦想，究竟涅槃。三世诸佛，依般若波罗蜜多故，得阿耨多罗三藐三菩提。
     spriteTextManager.init();
     spriteTextManager.fillScreen(TFT_BLACK);
-    uint8_t *framebuffer = (uint8_t *)calloc(sizeof(uint8_t), FRAMEBUFFER_SIZE);
+    spriteTextManager.setScrollWindow(0, LCD_HEIGHT, 0);
+    framebuffer = (uint8_t *)calloc(sizeof(uint8_t), FRAMEBUFFER_SIZE);
     if (!framebuffer)
     {
       Serial.println("alloc memory failed !!!");
       while (1)
         ;
     }
+    Serial.printf("Total PSRAM: %d bytes\n", ESP.getPsramSize());
+    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
+    Serial.printf("Total heap: %d bytes\n", ESP.getHeapSize());
+    Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+    Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
+    Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
+    Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
+
 
     SPIFFS.begin(true);
     File fontFile = SPIFFS.open(MY_TTF, "r");
@@ -217,18 +230,87 @@ void setup()
       truetype.setTextBoundary(0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
       truetype.setCharacterSpacing(5);
       truetype.setTextColor(0x01, 0x01);
-      truetype.textDraw(0, 0, L"福");
-      //print_bitmap(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-      //print_bitmap_row_column(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-      //display_bitmap(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-      display_bitmap_rotate_90(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-    
+      
+      
     }
-    truetype.end();
+    //truetype.end();
     
 }
 
 void loop()
 {
-    delay(20);
+
+    static uint16_t address = LCD_HEIGHT;
+    static bool is_draw = false;
+    static uint16_t y = 0;
+    //static String draw_string[] = {"万", "事", "如", "意", "、", "阖", "家", "幸", "福", "！"};
+    static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
+    static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
+    static uint16_t draw_string_index = 0;
+    if (address <= 0)
+    {
+        address = LCD_HEIGHT;
+    }
+    
+    unsigned long startTimeTotal = micros();
+    static uint16_t top_offset = 2;
+    for (int x = 0; x < WIDTH_PIXELS && draw_string_index < draw_string_len; x++)
+    {
+        
+        //truetype.textDraw(0, 0, L"福");
+        //display_bitmap_rotate_90(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
+
+        //Serial.println("x:"+String(x)+" y:"+String(y));
+        if (y < HEIGHT_PIXELS)
+        {
+            if (is_draw == false)
+            {
+                memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+                String str = draw_string[draw_string_index];
+                Serial.println("str:"+str);
+                unsigned long startTime = micros();
+                truetype.textDraw(0, 0, str);
+                
+                unsigned long endTime = micros();
+                Serial.println("time:"+String(endTime-startTime));
+                //display_bitmap_rotate_90(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
+                is_draw = true;
+            }
+            uint16_t y_offset = address-1;
+            uint16_t color = get_bitmap_color(framebuffer, y, x);
+            //Serial.println("color:"+String(color));
+            if (x == 0)
+            {
+                spriteTextManager.setRowAddress(top_offset, y_offset);
+                spriteTextManager.enableWriteColor();
+            }
+            spriteTextManager.writeColor(color);
+            //Serial.println("x:"+String(x)+" y:"+String(y)+" color:"+String(color));
+            if (x == WIDTH_PIXELS - 1)
+            {
+                spriteTextManager.disableWriteColor();
+            }
+        }else if (y >= HEIGHT_PIXELS)
+        {
+            draw_string_index++;
+            is_draw = false;
+            y = 0;
+            spriteTextManager.clearSprite();
+        }
+
+    }
+    
+    if (draw_string_index >= draw_string_len)
+    {
+        draw_string_index = 0;
+        is_draw = false;
+        y = 0;
+        spriteTextManager.clearSprite();
+        Serial.println("clearSprite2");
+    }
+    spriteTextManager.scrollStart(address);
+    y++;
+    address--;
+    //Serial.println("address:"+String(address));
+    delay(1);
 }

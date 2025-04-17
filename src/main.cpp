@@ -56,10 +56,6 @@ bool checkFileExists(const char *filename)
     return false;
   }
 }
-
-
-
-
 uint16_t get_bitmap_color(uint8_t *framebuffer, uint16_t x, uint16_t y) {
     uint16_t byte_index = y * WIDTH_BYTES + (x / 8);
     uint8_t bit_position = 7 - (x % 8); // 从高位到低位
@@ -132,12 +128,22 @@ void printChineseUnicode(const String& text) {
     }
   }
 }
+void initSprite(){
+  spriteTextManager.init();
+  spriteTextManager.fillScreen(TFT_BLACK);
+  spriteTextManager.setScrollWindow(0, LCD_HEIGHT, 0);
+  Serial.printf("Total PSRAM: %d bytes\n", ESP.getPsramSize());
+  Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
+  Serial.printf("Total heap: %d bytes\n", ESP.getHeapSize());
+  Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
+  Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
+  Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
 
+}
 void initTruetype()
 {
-    spriteTextManager.init();
-    spriteTextManager.fillScreen(TFT_BLACK);
-    spriteTextManager.setScrollWindow(0, LCD_HEIGHT, 0);
+    
     framebuffer = (uint8_t *)calloc(sizeof(uint8_t), FRAMEBUFFER_SIZE);
     //memset(framebuffer, 0, FRAMEBUFFER_SIZE);
     if (!framebuffer)
@@ -146,15 +152,6 @@ void initTruetype()
       while (1)
         ;
     }
-    Serial.printf("Total PSRAM: %d bytes\n", ESP.getPsramSize());
-    Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
-    Serial.printf("Total heap: %d bytes\n", ESP.getHeapSize());
-    Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
-    Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
-    Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
-    Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
-
-
     SPIFFS.begin(true);
     File fontFile = SPIFFS.open(MY_TTF, "r");
     Serial.println("fontFile.name():"+String(fontFile.name()));
@@ -172,7 +169,7 @@ void initTruetype()
       truetype.setTextColor(0x01, 0x01);
     }
 }
-void readFrontType()
+void readTruetype()
 {
     static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
     static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
@@ -182,68 +179,70 @@ void readFrontType()
     TextMessage_t message;
     message.unicode = unicode;
     message.processed = false;
+    unsigned long startTimeRead = micros();
     truetype.readText(unicode);
+    unsigned long endTimeRead = micros();
+    Serial.println("readText Time:"+String(endTimeRead-startTimeRead));
     draw_string_index++;
-    // if(xQueueSend(textQueue, &message, portMAX_DELAY) == pdPASS){
-    //     draw_string_index++;
-    //     Serial.println("xQueueSend===>");
-    // }
     if(draw_string_index >= draw_string_len){
         draw_string_index = 0;
     }    
 }
+void unInitTruetype(){
+  free(framebuffer);
+  truetype.end();
+}
 void handleTruetype()
 {
+
+    unsigned long startTime = micros();
     static uint16_t address = LCD_HEIGHT;
-    static bool is_draw = false;
-    static uint16_t y = 0;
     if (address <= 0)
     {
         address = LCD_HEIGHT;
     }
-    
+    memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+    truetype.pushText();
+    Serial.println("readFrontType");
     unsigned long startTimeTotal = micros();
     static uint16_t top_offset = 2;
-    //一个循环就是一个汉字
-    for (int x = 0; x < WIDTH_PIXELS ; x++)
-    {
-        if (y < HEIGHT_PIXELS)
-        {
-            if (is_draw == false)
-            {
-                memset(framebuffer, 0, FRAMEBUFFER_SIZE);
-                readFrontType();
-                truetype.pushText();
-                is_draw = true;
-            }
-            uint16_t y_offset = address-1;
-            uint16_t color = get_bitmap_color(framebuffer, y, x);
-            //Serial.println("color:"+String(color));
-            if (x == 0)
-            {
-              //每一行开始
-              spriteTextManager.setRowAddress(top_offset, y_offset);
-              spriteTextManager.enableWriteColor();
-            }
-            //每一列，写入颜色
-            spriteTextManager.writeColor(color);
-            if (x == WIDTH_PIXELS - 1)
-            {
-                //每一行结束
-                spriteTextManager.disableWriteColor();
-            }
-        }else if (y >= HEIGHT_PIXELS)
-        {
-            //一个汉字的结束，重新初始化
-            is_draw = false;
-            y = 0;
-            spriteTextManager.clearSprite();
-        }
-
+    for(int y = 0; y < HEIGHT_PIXELS; y++){
+      //一个循环就是一行
+      for (int x = 0; x < WIDTH_PIXELS ; x++)
+      {
+          if (y < HEIGHT_PIXELS)
+          {
+              uint16_t y_offset = address-1;
+              uint16_t color = get_bitmap_color(framebuffer, y, x);
+              //Serial.println("color:"+String(color));
+              if (x == 0)
+              {
+                //每一行开始
+                spriteTextManager.setRowAddress(top_offset, y_offset);
+                spriteTextManager.enableWriteColor();
+              }
+              //每一列，写入颜色
+              spriteTextManager.writeColor(color);
+              if (x == WIDTH_PIXELS - 1)
+              {
+                  //每一行结束
+                  spriteTextManager.disableWriteColor();
+              }
+          }else if (y >= HEIGHT_PIXELS)
+          {
+              //一行结束，重新初始化
+              y = 0;
+              spriteTextManager.clearSprite();
+          }
+      }
+      delay(12);
+      spriteTextManager.scrollStart(address);
+      address--;
+      
     }
-    spriteTextManager.scrollStart(address);
-    y++;
-    address--;
+    unsigned long endTime = micros();
+    Serial.println("handleTruetype End");
+    Serial.println("handleTruetype Time:"+String(endTime-startTime));
 }
 
 
@@ -267,12 +266,22 @@ void TaskFrontTypeRead(void *pvParameters)
 {
     Serial.println("TaskFrontTypeRead");
     while(1){
+      //unsigned long startTime = micros();
       delay(10);
+        
         if(uxQueueMessagesWaiting(textQueue) == QUEUE_LENGTH){
-            //Serial.println("Queue is full");
+            Serial.println("Queue is full");
             return;
         }
-        readFrontType();
+        unsigned long startTimeRead = micros();
+        readTruetype();
+        unsigned long endTimeRead = micros();
+        Serial.println("readFrontType Time:"+String(endTimeRead-startTimeRead));
+        TextMessage_t message;
+        message.processed = false;
+        if(xQueueSend(textQueue, &message, pdMS_TO_TICKS(10)) == pdPASS){
+          Serial.println("xQueueSend===>");
+        }
     }
 }
 
@@ -291,10 +300,11 @@ void setup()
         Serial.println("Queue creation failed!");
         while(1); // 如果队列创建失败，停止执行
     }
+    initSprite();
     initTruetype();
     
     //xTaskCreatePinnedToCore(TaskFrontTypeRead, "TaskFrontTypeRead", 16384, NULL, 1, NULL, 1); 
-    //xTaskCreatePinnedToCore(TaskFrontTypeHandle, "TaskFrontTypeHandle", 8192, NULL, 1, NULL, 1); // 在核心0上运行
+    //xTaskCreatePinnedToCore(TaskFrontTypeHandle, "TaskFrontTypeHandle", 8192, NULL, 1, NULL, 0); // 在核心0上运行
 
     //readFrontType();
     
@@ -302,9 +312,8 @@ void setup()
 
 void loop()
 {
-
+    readTruetype();
     handleTruetype();
-    //Serial.println("address:"+String(address));
-    //handleTruetype();
-    delay(1);
+    //unInitTruetype();
+    //delay(1);
 }

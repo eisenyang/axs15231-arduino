@@ -378,7 +378,6 @@ uint16_t truetypeClass::codeToGlyphId(uint16_t _code)
           glyphId = this->getUInt16t();
           //Serial.print("glyphId2:");Serial.println(glyphId,HEX);
         }
-
         found = 1;
         break;
       }
@@ -1114,10 +1113,21 @@ int32_t truetypeClass::isLeft(ttCoordinate_t *_p0, ttCoordinate_t *_p1, ttCoordi
 void truetypeClass::readText(uint16_t _character){
   uint8_t c = 0;
   uint16_t prev_code = 0;
+  unsigned long startTime = micros();
   this->charCode = this->codeToGlyphId(_character); // 将字符代码转换为字形id
+  Serial.println("codeToGlyphId Time:"+String(micros()-startTime));
+
+
+  startTime = micros();
   this->readGlyph(this->charCode); // 读取字形
+  Serial.println("readGlyph Time:"+String(micros()-startTime));
+
+  startTime = micros();
   this->hMetric = getHMetric(this->charCode); // 获取H度量
+  Serial.println("getHMetric Time:"+String(micros()-startTime));
   //Serial.println("readText"+String(this->charCode));
+  unsigned long endTime = micros();
+  Serial.println("readText Time:"+String(endTime-startTime));
   return;
 }
 

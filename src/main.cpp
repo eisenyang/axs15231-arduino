@@ -197,10 +197,6 @@ void handleTruetype()
     static uint16_t address = LCD_HEIGHT;
     static bool is_draw = false;
     static uint16_t y = 0;
-    //static String draw_string[] = {"万", "事", "如", "意", "、", "阖", "家", "幸", "福", "！"};
-    // static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
-    // static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
-    // static uint16_t draw_string_index = 0;
     if (address <= 0)
     {
         address = LCD_HEIGHT;
@@ -208,21 +204,14 @@ void handleTruetype()
     
     unsigned long startTimeTotal = micros();
     static uint16_t top_offset = 2;
+    //一个循环就是一个汉字
     for (int x = 0; x < WIDTH_PIXELS ; x++)
     {
-        //Serial.println("handleTruetype");
-        //truetype.textDraw(0, 0, L"福");
-        //display_bitmap_rotate_90(framebuffer, WIDTH_BYTES, HEIGHT_PIXELS);
-
-        //Serial.println("x:"+String(x)+" y:"+String(y));
         if (y < HEIGHT_PIXELS)
         {
             if (is_draw == false)
             {
                 memset(framebuffer, 0, FRAMEBUFFER_SIZE);
-                //uint16_t unicode = getChineseUnicode(draw_string[draw_string_index]);
-                //truetype.readText(unicode);
-
                 readFrontType();
                 truetype.pushText();
                 is_draw = true;
@@ -232,33 +221,26 @@ void handleTruetype()
             //Serial.println("color:"+String(color));
             if (x == 0)
             {
-                spriteTextManager.setRowAddress(top_offset, y_offset);
-                spriteTextManager.enableWriteColor();
+              //每一行开始
+              spriteTextManager.setRowAddress(top_offset, y_offset);
+              spriteTextManager.enableWriteColor();
             }
+            //每一列，写入颜色
             spriteTextManager.writeColor(color);
-            //Serial.println("x:"+String(x)+" y:"+String(y)+" color:"+String(color));
             if (x == WIDTH_PIXELS - 1)
             {
+                //每一行结束
                 spriteTextManager.disableWriteColor();
             }
         }else if (y >= HEIGHT_PIXELS)
         {
-            //draw_string_index++;
+            //一个汉字的结束，重新初始化
             is_draw = false;
             y = 0;
             spriteTextManager.clearSprite();
         }
 
     }
-    
-    // if (draw_string_index >= draw_string_len)
-    // {
-    //     draw_string_index = 0;
-    //     is_draw = false;
-    //     y = 0;
-    //     spriteTextManager.clearSprite();
-    //     Serial.println("clearSprite2");
-    // }
     spriteTextManager.scrollStart(address);
     y++;
     address--;

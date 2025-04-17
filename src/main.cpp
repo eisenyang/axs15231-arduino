@@ -172,16 +172,35 @@ void initTruetype()
       truetype.setTextColor(0x01, 0x01);
     }
 }
-
+void readFrontType()
+{
+    static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
+    static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
+    static uint16_t draw_string_index = 0;
+    String str = draw_string[draw_string_index];
+    uint16_t unicode = getChineseUnicode(str);
+    TextMessage_t message;
+    message.unicode = unicode;
+    message.processed = false;
+    truetype.readText(unicode);
+    draw_string_index++;
+    // if(xQueueSend(textQueue, &message, portMAX_DELAY) == pdPASS){
+    //     draw_string_index++;
+    //     Serial.println("xQueueSend===>");
+    // }
+    if(draw_string_index >= draw_string_len){
+        draw_string_index = 0;
+    }    
+}
 void handleTruetype()
 {
     static uint16_t address = LCD_HEIGHT;
     static bool is_draw = false;
     static uint16_t y = 0;
     //static String draw_string[] = {"万", "事", "如", "意", "、", "阖", "家", "幸", "福", "！"};
-    static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
-    static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
-    static uint16_t draw_string_index = 0;
+    // static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
+    // static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
+    // static uint16_t draw_string_index = 0;
     if (address <= 0)
     {
         address = LCD_HEIGHT;
@@ -189,7 +208,7 @@ void handleTruetype()
     
     unsigned long startTimeTotal = micros();
     static uint16_t top_offset = 2;
-    for (int x = 0; x < WIDTH_PIXELS && draw_string_index < draw_string_len; x++)
+    for (int x = 0; x < WIDTH_PIXELS ; x++)
     {
         //Serial.println("handleTruetype");
         //truetype.textDraw(0, 0, L"福");
@@ -201,8 +220,10 @@ void handleTruetype()
             if (is_draw == false)
             {
                 memset(framebuffer, 0, FRAMEBUFFER_SIZE);
-                uint16_t unicode = getChineseUnicode(draw_string[draw_string_index]);
-                truetype.readText(unicode);
+                //uint16_t unicode = getChineseUnicode(draw_string[draw_string_index]);
+                //truetype.readText(unicode);
+
+                readFrontType();
                 truetype.pushText();
                 is_draw = true;
             }
@@ -222,7 +243,7 @@ void handleTruetype()
             }
         }else if (y >= HEIGHT_PIXELS)
         {
-            draw_string_index++;
+            //draw_string_index++;
             is_draw = false;
             y = 0;
             spriteTextManager.clearSprite();
@@ -230,38 +251,20 @@ void handleTruetype()
 
     }
     
-    if (draw_string_index >= draw_string_len)
-    {
-        draw_string_index = 0;
-        is_draw = false;
-        y = 0;
-        spriteTextManager.clearSprite();
-        Serial.println("clearSprite2");
-    }
+    // if (draw_string_index >= draw_string_len)
+    // {
+    //     draw_string_index = 0;
+    //     is_draw = false;
+    //     y = 0;
+    //     spriteTextManager.clearSprite();
+    //     Serial.println("clearSprite2");
+    // }
     spriteTextManager.scrollStart(address);
     y++;
     address--;
 }
 
-void readFrontType()
-{
-    static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
-    static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
-    static uint16_t draw_string_index = 0;
-    String str = draw_string[draw_string_index];
-    uint16_t unicode = getChineseUnicode(str);
-    TextMessage_t message;
-    message.unicode = unicode;
-    message.processed = false;
-    truetype.readText('万');
-    // if(xQueueSend(textQueue, &message, portMAX_DELAY) == pdPASS){
-    //     draw_string_index++;
-    //     Serial.println("xQueueSend===>");
-    // }
-    if(draw_string_index >= draw_string_len){
-        draw_string_index = 0;
-    }    
-}
+
 
 void TaskFrontTypeHandle(void *pvParameters)
 {
@@ -282,14 +285,12 @@ void TaskFrontTypeRead(void *pvParameters)
 {
     Serial.println("TaskFrontTypeRead");
     while(1){
+      delay(10);
         if(uxQueueMessagesWaiting(textQueue) == QUEUE_LENGTH){
             //Serial.println("Queue is full");
-            delay(10);
             return;
         }
         readFrontType();
-        handleTruetype();
-        //delay(10000000);
     }
 }
 
@@ -313,15 +314,15 @@ void setup()
     //xTaskCreatePinnedToCore(TaskFrontTypeRead, "TaskFrontTypeRead", 16384, NULL, 1, NULL, 1); 
     //xTaskCreatePinnedToCore(TaskFrontTypeHandle, "TaskFrontTypeHandle", 8192, NULL, 1, NULL, 1); // 在核心0上运行
 
-    readFrontType();
+    //readFrontType();
     
 }
 
 void loop()
 {
 
-    //handleTruetype();
-    //Serial.println("address:"+String(address));
     handleTruetype();
+    //Serial.println("address:"+String(address));
+    //handleTruetype();
     delay(1);
 }

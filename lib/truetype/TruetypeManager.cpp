@@ -1111,6 +1111,46 @@ int32_t truetypeClass::isLeft(ttCoordinate_t *_p0, ttCoordinate_t *_p1, ttCoordi
   return ((_p1->x - _p0->x) * (_point->y - _p0->y) - (_point->x - _p0->x) * (_p1->y - _p0->y));
 }
 
+void truetypeClass::readText(uint16_t _character){
+  uint8_t c = 0;
+  uint16_t prev_code = 0;
+  this->charCode = this->codeToGlyphId(_character); // 将字符代码转换为字形id
+  this->readGlyph(this->charCode); // 读取字形
+  this->hMetric = getHMetric(this->charCode); // 获取H度量
+  //Serial.println("readText"+String(this->charCode));
+  return;
+}
+
+void truetypeClass::pushText(){
+    uint8_t c = 0;
+    uint16_t prev_code = 0;
+
+    int16_t _x = 0;
+    int16_t _y = 0;
+    //ttHMetric_t hMetric; // 获取H度量
+    _x += this->characterSpace;
+
+    prev_code = this->charCode;
+    uint16_t width = this->characterSize * (glyph.xMax - glyph.xMin) / (this->yMax - this->yMin);
+
+    // Not compatible with Compound glyphs now 现在与复合字形不兼容
+    if (glyph.numberOfContours >= 0)
+    {
+      //  写入帧缓冲区
+      this->generateOutline(hMetric.leftSideBearing + _x, _y, width);
+      // 填充容器
+      this->fillGlyph(hMetric.leftSideBearing + _x, _y, width);
+      // Serial.println();
+    }
+    this->freePointsAll();
+    this->freeGlyph();
+    // 使用哪个宽度？
+    if (hMetric.advanceWidth >= width)
+      _x += hMetric.advanceWidth;
+    else
+      _x += width;
+    lastWidth = _x; //记录宽度，下次调用时可节省计算时间
+}
 void truetypeClass::textDraw(int16_t _x, int16_t _y, const wchar_t _character[])
 {
   uint8_t c = 0;
@@ -1140,10 +1180,11 @@ void truetypeClass::textDraw(int16_t _x, int16_t _y, const wchar_t _character[])
     // Serial.printf("%c\n", _character[c]);
     // Serial.print("_character[c]:");Serial.println(_character[c],HEX);
     
-    this->charCode = this->codeToGlyphId(_character[c]); // 将字符代码转换为字形id
+    //this->charCode = this->codeToGlyphId(_character[c]); // 将字符代码转换为字形id
     // Serial.print("this->charCode:"); Serial.println(this->charCode, HEX);
     // Serial.print("this->charCode:"); Serial.println(this->charCode);
-    this->readGlyph(this->charCode); // 读取字形
+    //this->readGlyph(this->charCode); // 读取字形
+    readText(_character[c]); // 获取H度量
     _x += this->characterSpace;
     if (prev_code != 0 && this->kerningOn)
     {
@@ -1151,11 +1192,11 @@ void truetypeClass::textDraw(int16_t _x, int16_t _y, const wchar_t _character[])
       _x += (kern * (int16_t)this->characterSize) / (this->yMax - this->yMin);
     }
     prev_code = this->charCode;
-    ttHMetric_t hMetric = getHMetric(this->charCode); // 获取H度量
+    
     uint16_t width = this->characterSize * (glyph.xMax - glyph.xMin) / (this->yMax - this->yMin);
 
     // 到达显示器边缘和发现换行符时换下一行
-    if ((hMetric.leftSideBearing + width + _x) > this->end_x || _character[c] == '\n')
+    if ((this->hMetric.leftSideBearing + width + _x) > this->end_x || _character[c] == '\n')
     {
       _x = this->start_x;
       _y += this->characterSize;
@@ -1187,9 +1228,13 @@ void truetypeClass::textDraw(int16_t _x, int16_t _y, const wchar_t _character[])
       // Serial.print("hMetric.leftSideBearing:"); Serial.println(hMetric.leftSideBearing);
       // Serial.print("width:"); Serial.println(width);
       //  写入帧缓冲区
-      this->generateOutline(hMetric.leftSideBearing + _x, _y, width);
+      Serial.println("x:"+String(_x));
+      Serial.println("y:"+String(_y));
+      Serial.println("width:"+String(width));
+      Serial.println("hMetric.leftSideBearing:"+String(this->hMetric.leftSideBearing));
+      this->generateOutline(this->hMetric.leftSideBearing + _x, _y, width);
       // 填充容器
-      this->fillGlyph(hMetric.leftSideBearing + _x, _y, width);
+      this->fillGlyph(this->hMetric.leftSideBearing + _x, _y, width);
       // Serial.println();
     }
     this->freePointsAll();

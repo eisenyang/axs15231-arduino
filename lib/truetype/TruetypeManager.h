@@ -167,6 +167,8 @@ class truetypeClass {
     uint16_t getStringWidth(const char _character[]);
     uint16_t getStringWidth(const String _string);
 
+    void readText(uint16_t _character);
+    void pushText();
     void textDraw(int16_t _x, int16_t _y, const wchar_t _character[]);
     void textDraw(int16_t _x, int16_t _y, const char _character[]);
     void textDraw(int16_t _x, int16_t _y, const String _string);
@@ -222,7 +224,7 @@ class truetypeClass {
     uint16_t lastWidth = 0;       // 上一次的宽度
     uint8_t readHMetric();
     ttHMetric_t getHMetric(uint16_t _code);
-
+    ttHMetric_t hMetric;
     //kerning.
     ttKernHeader_t kernHeader;
     ttKernSubtable_t kernSubtable;

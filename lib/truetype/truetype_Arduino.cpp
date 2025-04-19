@@ -1,0 +1,1750 @@
+/*
+  Read truetype(.ttf) from SD and generate bitmap.
+
+  TrueType™ Reference Manual
+  https://developer.apple.com/fonts/TrueType-Reference-Manual/
+*/
+
+#include "truetype_Arduino.h"
+
+/* constructor */
+truetypeClass::truetypeClass() {
+  // 初始化缓存
+  hasCache = false;
+  charDataCache.data = NULL;
+  charDataCache.dataSize = 0;
+  charDataCache.code = 0;
+}
+
+/* ----------------public---------------- */
+
+void truetypeClass::end()
+{
+  file.close();
+
+  // 释放缓存数据
+  freeCacheData();
+
+  delete table;
+  table = NULL;
+
+  delete cmapEncoding;
+  cmapEncoding = NULL;
+
+  delete points;
+  points = NULL;
+
+  delete pointsToFill;
+  pointsToFill = NULL;
+
+
+  beginPoints = NULL;
+  endPoints = NULL;
+  userFrameBuffer = NULL;
+  delete beginPoints;
+  delete endPoints;
+  delete userFrameBuffer;
+
+  glyph.endPtsOfContours = NULL;
+  glyph.points = NULL;
+  delete glyph.endPtsOfContours;
+  delete glyph.points;
+
+  //free(glyph.points);
+  //free(glyph.endPtsOfContours);
+  //this->freePointsAll();
+  //this->freeGlyph();
+}
+
+/* initialize */
+uint8_t truetypeClass::setTtfFile(File _file, uint8_t _checkCheckSum)
+{
+  if (_file == 0)
+  {
+    return 0;
+  }
+
+  // 清理旧缓存
+  freeCacheData();
+  hasCache = false;
+
+  this->file = _file;
+  if (this->readTableDirectory(_checkCheckSum) == 0)
+  {
+    file.close();
+    return 0;
+  }
+  if (this->readCmap() == 0)
+  {
+    file.close();
+    return 0;
+  }
+  if (this->readHMetric() == 0)
+  {
+    file.close();
+    return 0;
+  }
+
+  // 获取advanceWidthMax的值,使用空格的两倍为MAX
+  uint16_t code = 32;
+  uint32_t charCodeID = this->codeToGlyphId(code); //将字符代码转换为字形id
+  uint32_t charCodeID_pos = this->hmtxTablePos + (charCodeID * 4);
+  _file.seek(charCodeID_pos);
+  advanceWidthMax = this->getInt16t() * 2;
+
+  //Serial.print("advanceWidthMax:");Serial.println(advanceWidthMax);
+  this->readKern();
+  this->readHeadTable();
+  return 1;
+}
+
+//设置帧缓冲区
+void truetypeClass::setFramebuffer(uint16_t _framebufferWidth, uint16_t _framebufferHeight, uint16_t _framebuffer_bit, uint8_t _framebufferDirection, uint8_t *_framebuffer) {
+  this->displayWidth = _framebufferWidth;
+  this->displayHeight = _framebufferHeight;
+  this->framebufferBit = _framebuffer_bit;
+  this->framebufferDirection = _framebufferDirection;
+  this->userFrameBuffer = _framebuffer;
+
+  if (this->framebufferDirection) {
+    //Framebuffer bit direction: Vertical
+  } else {
+    //Framebuffer bit direction: Horizontal
+    switch (this->framebufferBit) {
+      case 8: //8bit Horizontal
+        this->displayWidthFrame = this->displayWidth;
+        break;
+      case 4: //4bit Horizontal
+        this->displayWidthFrame = (this->displayWidth % 2 == 0) ? (this->displayWidth / 2 ) : (this->displayWidth / 2 + 1);
+        break;
+      case 1: //1bit Horizontal
+      default:
+        this->displayWidthFrame = (this->displayWidth % 8 == 0) ? (this->displayWidth / 8 ) : (this->displayWidth / 8 + 1);
+        break;
+    }
+  }
+  return;
+}
+
+void truetypeClass::setCharacterSize(uint16_t _characterSize) {
+  this->characterSize = _characterSize;
+}
+
+void truetypeClass::setCharacterSpacing(int16_t _characterSpace, uint8_t _kerning) {
+  this->characterSpace = _characterSpace;
+  this->kerningOn = _kerning;
+}
+
+void truetypeClass::setTextBoundary(uint16_t _start_x, uint16_t _end_x, uint16_t _end_y) {
+  this->start_x = _start_x;
+  this->end_x = _end_x;
+  this->end_y = _end_y;
+}
+
+void truetypeClass::setTextColor(uint8_t _onLine, uint8_t _inside) {
+  this->colorLine = _onLine;
+  this->colorInside = _inside;
+}
+
+void truetypeClass::setTextRotation(uint16_t _rotation) {
+  switch (_rotation) {
+    case ROTATE_90:
+    case 90:
+      _rotation = 1;
+      break;
+    case ROTATE_180:
+    case 180:
+      _rotation = 2;
+      break;
+    case ROTATE_270:
+    case 270:
+      _rotation = 3;
+      break;
+    default:
+      _rotation = 0;
+      break;
+  }
+  this->stringRotation = _rotation;
+}
+
+/* ----------------private---------------- */
+/* calculate checksum */
+uint32_t truetypeClass::calculateCheckSum(uint32_t offset, uint32_t length) {
+  uint32_t checksum = 0L;
+
+  length = (length + 3) / 4;
+  file.seek(offset);
+
+  while (length-- > 0) {
+    checksum += this->getUInt32t();
+  }
+  return checksum;
+}
+
+/* read table directory */
+int truetypeClass::readTableDirectory(int checkCheckSum)
+{
+  file.seek(numTablesPos);
+  numTables = this->getUInt16t();
+  this->table = (ttTable_t *)malloc(sizeof(ttTable_t) * numTables);
+
+  file.seek(tablePos);
+  // Serial.println("---table list---");
+  for (int i = 0; i < numTables; i++)
+  {
+    for (int j = 0; j < 4; j++)
+    {
+      this->table[i].name[j] = this->getUInt8t();
+      // Serial.printf("%c", table[i].name[j]);
+    }
+    this->table[i].name[4] = '\0';
+    this->table[i].checkSum = this->getUInt32t();
+    this->table[i].offset = this->getUInt32t();
+    this->table[i].length = this->getUInt32t();
+
+    // Serial.printf("--%X", table[i].offset);
+    // Serial.println();
+  }
+
+  if (checkCheckSum)
+  {
+    for (int i = 0; i < numTables; i++)
+    {
+      if (strcmp(this->table[i].name, "head") != 0)
+      { /* checksum of "head" is invalid */
+        uint32_t c = this->calculateCheckSum(this->table[i].offset, this->table[i].length);
+        if (this->table[i].checkSum != c)
+        {
+          return 0;
+        }
+      }
+    }
+  }
+  return 1;
+}
+
+/* read head table */
+void truetypeClass::readHeadTable() {
+  for (int i = 0; i < numTables; i++) {
+    if (strcmp(table[i].name, "head") == 0) {
+      file.seek(table[i].offset);
+
+      headTable.version = this->getUInt32t();
+      headTable.revision = this->getUInt32t();
+      headTable.checkSumAdjustment = this->getUInt32t();
+      headTable.magicNumber = this->getUInt32t();
+      headTable.flags = this->getUInt16t();
+      headTable.unitsPerEm = this->getUInt16t();
+      for (int j = 0; j < 8; j++) {
+        headTable.created[i] = this->getUInt8t();
+      }
+      for (int j = 0; j < 8; j++) {
+        headTable.modified[i] = this->getUInt8t();
+      }
+      xMin = headTable.xMin = this->getInt16t();
+      yMin = headTable.yMin = this->getInt16t();
+      xMax = headTable.xMax = this->getInt16t();
+      yMax = headTable.yMax = this->getInt16t();
+      headTable.macStyle = this->getUInt16t();
+      headTable.lowestRecPPEM = this->getUInt16t();
+      headTable.fontDirectionHint = this->getInt16t();
+      headTable.indexToLocFormat = this->getInt16t();
+      headTable.glyphDataFormat = this->getInt16t();
+    }
+  }
+}
+
+/* cmap */
+/* read cmap format 4 */
+uint8_t truetypeClass::readCmapFormat4() {
+  file.seek(cmapFormat4.offset);
+  if ((cmapFormat4.format = this->getUInt16t()) != 4) {
+    return 0;
+  }
+
+  cmapFormat4.length = this->getUInt16t();
+  cmapFormat4.language = this->getUInt16t();
+  cmapFormat4.segCountX2 = this->getUInt16t();
+  cmapFormat4.searchRange = this->getUInt16t();
+  cmapFormat4.entrySelector = this->getUInt16t();
+  cmapFormat4.rangeShift = this->getUInt16t();
+  cmapFormat4.endCodeOffset = cmapFormat4.offset + 14;
+  cmapFormat4.startCodeOffset = cmapFormat4.endCodeOffset + cmapFormat4.segCountX2 + 2;
+  cmapFormat4.idDeltaOffset = cmapFormat4.startCodeOffset + cmapFormat4.segCountX2;
+  cmapFormat4.idRangeOffsetOffset = cmapFormat4.idDeltaOffset + cmapFormat4.segCountX2;
+  cmapFormat4.glyphIndexArrayOffset = cmapFormat4.idRangeOffsetOffset + cmapFormat4.segCountX2;
+
+  return 1;
+}
+
+/* read cmap */
+uint8_t truetypeClass::readCmap() {
+  uint16_t platformId, platformSpecificId;
+  uint32_t cmapOffset, tableOffset;
+  uint8_t foundMap = 0;
+
+  if ((cmapOffset = this->seekToTable("cmap")) == 0) {
+    return 0;
+  }
+
+  cmapIndex.version = this->getUInt16t();
+  cmapIndex.numberSubtables = this->getUInt16t();
+
+  for (uint16_t i = 0; i < cmapIndex.numberSubtables; i++) {
+    platformId = this->getUInt16t();
+    platformSpecificId = this->getUInt16t();
+    tableOffset = this->getUInt32t();
+    if ((platformId == 3) && (platformSpecificId == 1)) {
+      cmapFormat4.offset = cmapOffset + tableOffset;
+      this->readCmapFormat4();
+      foundMap = 1;
+      break;
+    }
+  }
+
+  if (foundMap == 0) {
+    return 0;
+  }
+
+  return 1;
+}
+
+/* 将字符代码转换为字形id */
+uint16_t truetypeClass::codeToGlyphId(uint16_t _code)
+{
+  uint16_t start, end, idRangeOffset;
+  int16_t idDelta;
+  uint8_t found = 0;
+  uint16_t offset, glyphId;
+  //Serial.print("_code:");Serial.println(_code,HEX);
+  //Serial.print("cmapFormat4.segCountX2:");Serial.println(cmapFormat4.segCountX2);
+  for (int i = 0; i < cmapFormat4.segCountX2 >> 1; i++)
+  {
+    //yield();
+    file.seek(cmapFormat4.endCodeOffset + 2 * i);
+    end = this->getUInt16t();
+    //Serial.print("end:");Serial.println(end,HEX);
+    if (_code <= end)
+    {
+      file.seek(cmapFormat4.startCodeOffset + 2 * i);
+      start = this->getUInt16t();
+      if (_code >= start)
+      {
+        //Serial.print("start:");Serial.println(start,HEX);
+        file.seek(cmapFormat4.idDeltaOffset + 2 * i);
+        idDelta = this->getInt16t();
+        file.seek(cmapFormat4.idRangeOffsetOffset + 2 * i);
+        idRangeOffset = this->getUInt16t();
+        if (idRangeOffset == 0)
+        {
+          glyphId = (idDelta + _code) % 65536;
+          //Serial.print("idDelta:");Serial.println(idDelta,HEX);
+          //Serial.print("glyphId1:");Serial.println(glyphId,HEX);
+        }
+        else
+        {
+          offset = ((idRangeOffset >> 1) + i + _code - start - (cmapFormat4.segCountX2 >> 1)) * 2;
+          file.seek(cmapFormat4.glyphIndexArrayOffset + offset);
+          glyphId = this->getUInt16t();
+          //Serial.print("glyphId2:");Serial.println(glyphId,HEX);
+        }
+
+        found = 1;
+        break;
+      }
+    }
+  }
+  if (!found) return 0;
+
+  return glyphId;
+}
+
+/* kerning */
+/* 读取字距表 */
+uint8_t truetypeClass::readKern() {
+  uint32_t nextTable;
+
+  if (this->seekToTable("kern") == 0) {
+    //Serial.println("kern not found");
+    return 0;
+  }
+
+  kernHeader.nTables = this->getUInt32t();
+
+  //only support up to 32 sub-tables
+  if (kernHeader.nTables > 32) {
+    kernHeader.nTables = 32;
+  }
+
+  for (uint8_t i = 0; i < kernHeader.nTables; i++) {
+    uint16_t format;
+
+    kernSubtable.length = this->getUInt32t();
+    nextTable = file.position() + kernSubtable.length;
+    kernSubtable.coverage = this->getUInt16t();
+
+    format = (uint16_t)(kernSubtable.coverage >> 8);
+
+    // only support format0
+    if (format != 0) {
+      file.seek(nextTable);
+      continue;
+    }
+
+    // only use horizontal kerning tables
+    if ((kernSubtable.coverage & 0x0003) != 0x0001) {
+      file.seek(nextTable);
+      continue;
+    }
+
+    //format0
+    kernFormat0.nPairs = this->getUInt16t();
+    kernFormat0.searchRange = this->getUInt16t();
+    kernFormat0.entrySelector = this->getUInt16t();
+    kernFormat0.rangeShift = this->getUInt16t();
+    this->kernTablePos = file.position();
+
+    break;
+  }
+
+  return 1;
+}
+
+int16_t truetypeClass::getKerning(uint16_t _left_glyph, uint16_t _right_glyph) {
+  //int16_t result = this->characterSpace;
+  int16_t result = 0;
+  uint32_t key0 = ((uint32_t)(_left_glyph) << 16) | (_right_glyph);
+
+  file.seek(this->kernTablePos);
+  for (uint16_t i = 0; i < kernFormat0.nPairs; i++) {
+    uint32_t key1 = this->getUInt32t();
+    if (key0 == key1) {
+      result = this->getInt16t();
+      break;
+    }
+    file.seek(file.position() + 2);
+  }
+
+  return result;
+}
+
+//hmtx. 每个字形的水平布局的度量信息
+uint8_t truetypeClass::readHMetric()
+{
+  if (this->seekToTable("hmtx") == 0)
+  {
+    // Serial.println("hmtx not found");
+    return 0;
+  }
+
+  this->hmtxTablePos = file.position();
+  return 1;
+}
+
+ttHMetric_t truetypeClass::getHMetric(uint16_t _code) 
+{
+  ttHMetric_t result;
+  result.advanceWidth = 0;
+  file.seek(this->hmtxTablePos + (_code * 4));
+  result.advanceWidth = getUInt16t();
+  result.leftSideBearing = getInt16t();
+
+  // 限制advanceWidth，从hmet表获取的值不一定正确
+  if (result.advanceWidth > advanceWidthMax)
+    result.advanceWidth = advanceWidthMax;
+
+  // 限制leftSideBearing，从hmet表获取的值不一定正确
+  if (result.leftSideBearing > 0 && (result.leftSideBearing > glyph.xMin))
+    result.leftSideBearing = glyph.xMin;
+  else if (result.leftSideBearing < 0 && glyph.xMin > 0)
+    result.leftSideBearing = glyph.xMin;
+
+  // left Side Bearing
+  //  简称LSB从原点到字形bbox左侧边缘距离。这个值对于水平排版通常是正值，但是对于垂直排版通常则是负值。
+  int32_t difference = this->yMax - this->yMin;
+  result.advanceWidth = (result.advanceWidth * this->characterSize) / difference;
+  result.leftSideBearing = (result.leftSideBearing * this->characterSize) / difference;
+  return result;
+}
+
+/* get glyph offset */
+uint32_t truetypeClass::getGlyphOffset(uint16_t index) {
+  // 从缓存中获取偏移量
+  if (hasCache && charDataCache.code == index) {
+    return charDataCache.glyphOffset;
+  }
+
+  uint16_t numGlyphs;
+  uint32_t locaOffset;
+  uint32_t offset;
+
+  locaOffset = this->seekToTable("loca");
+  this->seekToTable("maxp");
+  file.seek(file.position() + 4);
+  numGlyphs = this->getUInt16t();
+
+  offset = this->seekToTable("glyf");
+
+  // 防止越界
+  if (index >= numGlyphs) return offset;
+
+  file.seek(locaOffset);
+
+  if (this->headTable.indexToLocFormat == 0) {
+    // Short offsets
+    file.seek(locaOffset + index * 2);
+    offset += (uint32_t)(this->getUInt16t()) * 2;
+  } else {
+    // Long offsets
+    file.seek(locaOffset + index * 4);
+    offset += this->getUInt32t();
+  }
+  
+  return offset;
+}
+
+/* 读取坐标 */
+void truetypeClass::readCoords(char _xy, uint16_t _startPoint) {
+  int16_t value = 0;
+  uint8_t shortFlag, sameFlag;
+
+  if (_xy == 'x') {
+    shortFlag = FLAG_XSHORT;
+    sameFlag = FLAG_XSAME;
+  } else {
+    shortFlag = FLAG_YSHORT;
+    sameFlag = FLAG_YSAME;
+  }
+
+  for (uint16_t i = _startPoint; i < glyph.numberOfPoints; i++) {
+    if (glyph.points[i].flag & shortFlag) {
+      if (glyph.points[i].flag & sameFlag) {
+        value += this->getUInt8t();
+      } else {
+        value -= this->getUInt8t();
+      }
+    } else if (~glyph.points[i].flag & sameFlag) {
+      value += this->getUInt16t();
+    }
+
+    if (_xy == 'x') {
+      if (this->glyphTransformation.enableScale) {
+        glyph.points[i].x = value + this->glyphTransformation.dx;
+      } else {
+        glyph.points[i].x = value + this->glyphTransformation.dx;
+      }
+    } else {
+      if (this->glyphTransformation.enableScale) {
+        glyph.points[i].y = value + this->glyphTransformation.dy;
+      } else {
+        glyph.points[i].y = value + this->glyphTransformation.dy;
+      }
+    }
+  }
+}
+
+/* read simple glyph */
+uint8_t truetypeClass::readSimpleGlyph(uint8_t _addGlyph) {
+  uint8_t repeatCount;
+  uint8_t flag;
+  static uint16_t counterContours;
+  static uint16_t counterPoints;
+
+  if (glyph.numberOfContours <= 0) {
+    return 0;
+  }
+
+  if (!_addGlyph) {
+    counterContours = 0;
+    counterPoints = 0;
+  }
+
+  if (_addGlyph) {
+    glyph.endPtsOfContours = (uint16_t *)realloc(glyph.endPtsOfContours, (sizeof(uint16_t) * glyph.numberOfContours));
+  } else {
+    glyph.endPtsOfContours = (uint16_t *)malloc((sizeof(uint16_t) * glyph.numberOfContours));
+  }
+
+  // 当前在缓存中的位置
+  uint32_t currentPos = 10; // 字形头信息后的位置
+  
+  // 读取轮廓结束点
+  for (uint16_t i = counterContours; i < glyph.numberOfContours; i++) {
+    glyph.endPtsOfContours[i] = counterPoints + this->getCachedUInt16t(currentPos);
+    currentPos += 2;
+  }
+
+  // 读取指令长度并跳过指令
+  uint16_t instructionLength = this->getCachedUInt16t(currentPos);
+  currentPos += 2 + instructionLength;
+
+  // 计算点数
+  for (uint16_t i = counterContours; i < glyph.numberOfContours; i++) {
+    if (glyph.endPtsOfContours[i] > glyph.numberOfPoints) {
+      glyph.numberOfPoints = glyph.endPtsOfContours[i];
+    }
+  }
+  glyph.numberOfPoints++;
+
+  if (_addGlyph) {
+    glyph.points = (ttPoint_t *)realloc(glyph.points, sizeof(ttPoint_t) * (glyph.numberOfPoints + glyph.numberOfContours));
+  } else {
+    glyph.points = (ttPoint_t *)malloc(sizeof(ttPoint_t) * (glyph.numberOfPoints + glyph.numberOfContours));
+  }
+
+  // 读取点标志
+  for (uint16_t i = counterPoints; i < glyph.numberOfPoints; i++) {
+    flag = this->getCachedUInt8t(currentPos++);
+    glyph.points[i].flag = flag;
+    if (flag & FLAG_REPEAT) {
+      repeatCount = this->getCachedUInt8t(currentPos++);
+      while (repeatCount--) {
+        glyph.points[++i].flag = flag;
+      }
+    }
+  }
+
+  // 记录x坐标开始位置
+  uint32_t xCoordsPos = currentPos;
+  
+  // 读取x坐标
+  int16_t x = 0; // 累计值
+  for (uint16_t i = counterPoints; i < glyph.numberOfPoints; i++) {
+    flag = glyph.points[i].flag;
+    if (flag & FLAG_XSHORT) {
+      // 短格式
+      uint8_t val = this->getCachedUInt8t(currentPos++);
+      if (flag & FLAG_XSAME) {
+        x += val; // 正增量
+      } else {
+        x -= val; // 负增量
+      }
+    } else if (flag & FLAG_XSAME) {
+      // 重复前一个值，不做任何事
+    } else {
+      // 长格式
+      x += this->getCachedInt16t(currentPos);
+      currentPos += 2;
+    }
+    glyph.points[i].x = x;
+  }
+  
+  // 读取y坐标
+  int16_t y = 0; // 累计值
+  for (uint16_t i = counterPoints; i < glyph.numberOfPoints; i++) {
+    flag = glyph.points[i].flag;
+    if (flag & FLAG_YSHORT) {
+      // 短格式
+      uint8_t val = this->getCachedUInt8t(currentPos++);
+      if (flag & FLAG_YSAME) {
+        y += val; // 正增量
+      } else {
+        y -= val; // 负增量
+      }
+    } else if (flag & FLAG_YSAME) {
+      // 重复前一个值，不做任何事
+    } else {
+      // 长格式
+      y += this->getCachedInt16t(currentPos);
+      currentPos += 2;
+    }
+    glyph.points[i].y = y;
+  }
+
+  counterContours = glyph.numberOfContours;
+  counterPoints = glyph.numberOfPoints;
+
+  return 1;
+}
+
+/* read Compound glyph */
+uint8_t truetypeClass::readCompoundGlyph() {
+  uint16_t glyphIndex;
+  uint16_t flags;
+  uint8_t numberOfGlyphs = 0;
+  int32_t arg1, arg2;
+  uint32_t currentPos = 10; // 从字形头部后开始
+
+  glyph.numberOfContours = 0;
+
+  //Serial.println("---CompoundGlyph---");
+
+  do {
+    flags = this->getCachedUInt16t(currentPos);
+    currentPos += 2;
+    glyphIndex = this->getCachedUInt16t(currentPos);
+    currentPos += 2;
+
+    this->glyphTransformation.enableScale = (flags & 0b00000001000) ? (1) : (0);
+
+    if (flags & 0b00000000001) {
+      arg1 = this->getCachedInt16t(currentPos);
+      currentPos += 2;
+      arg2 = this->getCachedInt16t(currentPos);
+      currentPos += 2;
+    } else {
+      arg1 = this->getCachedUInt8t(currentPos);
+      currentPos += 1;
+      arg2 = this->getCachedUInt8t(currentPos);
+      currentPos += 1;
+    }
+
+    if (flags & 0b00000000010) {
+      this->glyphTransformation.dx = arg1;
+      this->glyphTransformation.dy = arg2;
+    }
+
+    if (flags & 0b01000000000) {
+      this->charCode = glyphIndex;
+    }
+
+    //Serial.printf("--%d: flag: 0x%04X index: %4d\n", numberOfGlyphs, flags, glyphIndex);
+    //Serial.printf("dx: %3d, dy: %3d\n", this->glyphTransformation.dx, this->glyphTransformation.dy);
+    //Serial.printf("Scaling: %d\n", this->glyphTransformation.enableScale);
+
+    // 保存当前位置
+    uint32_t savedPos = currentPos;
+
+    // 切换到新字形
+    if (!cacheCharData(glyphIndex)) {
+      return 0;
+    }
+
+    // 读取新字形的轮廓数量
+    glyph.numberOfContours += this->getCachedInt16t(0);
+
+    if (numberOfGlyphs == 0) {
+      this->readSimpleGlyph();
+    } else {
+      this->readSimpleGlyph(1);
+    }
+
+    // 重新缓存当前字形并恢复位置
+    if (!cacheCharData(charDataCache.code)) {
+      return 0;
+    }
+    currentPos = savedPos;
+
+    numberOfGlyphs++;
+    this->glyphTransformation = {0, 0, 0, 1, 1}; //init
+  } while (flags & 0b00000100000);
+
+  return 1;
+}
+
+/* 读取字形 */
+uint8_t truetypeClass::readGlyph(uint16_t _code, uint8_t _justSize) //justSize 仅限大小
+{
+  //Serial.print("读取字形_code:"); Serial.println(_code, HEX);
+  //Serial.print("读取字形_justSize:"); Serial.println(_justSize, HEX);
+  //Serial.println("");
+
+  // 缓存字符数据
+  if (!cacheCharData(_code)) {
+    return 0;
+  }
+  
+  // 从缓存读取字形头部信息
+  glyph.numberOfContours = this->getCachedInt16t(0);
+  glyph.xMin = this->getCachedInt16t(2);
+  glyph.yMin = this->getCachedInt16t(4);
+  glyph.xMax = this->getCachedInt16t(6);
+  glyph.yMax = this->getCachedInt16t(8);
+
+  this->glyphTransformation = {0, 0, 0, 1, 1}; //init 字形变换
+
+  if (_justSize) {
+    return 0;
+  }
+
+  if (glyph.numberOfContours >= 0) {
+    return this->readSimpleGlyph(); //读取简单字形
+  }
+  else return this->readCompoundGlyph(); //读取复合字形
+
+  return 0;
+}
+
+/* 释放Glyph内存 */
+void truetypeClass::freeGlyph()
+{
+
+  //Serial.println("glyph.points1:");
+  /*Serial.print("glyph.points->flag:");Serial.println(glyph.points->flag);
+    Serial.print("glyph.points->x:");Serial.println(glyph.points->x);
+    Serial.print("glyph.points->y:");Serial.println(glyph.points->y);
+    Serial.println("");*/
+  free(glyph.points);
+  free(glyph.endPtsOfContours);
+  glyph.numberOfPoints = 0;
+}
+
+//生成位图
+void truetypeClass::generateOutline(int16_t _x, int16_t _y, uint16_t _width)
+{
+  this->points = NULL;
+  this->numPoints = 0;
+  this->numBeginPoints = 0;
+  this->numEndPoints = 0;
+
+  int16_t x0, y0, x1, y1;
+
+  uint16_t j = 0;
+
+  for (uint16_t i = 0; i < glyph.numberOfContours; i++)
+  {
+    uint8_t firstPointOfContour = j;
+    uint8_t lastPointOfContour = glyph.endPtsOfContours[i];
+    // Serial.print("---Contour--- ");
+    // Serial.print(j);
+    // Serial.print(" , ");
+    // Serial.println(lastPointOfContour);
+
+    // 旋转到曲线上的第一个点
+    uint16_t numberOfRotations = 0;
+    while ((firstPointOfContour + numberOfRotations) <= lastPointOfContour)
+    {
+      if (glyph.points[(firstPointOfContour + numberOfRotations)].flag & FLAG_ONCURVE)
+      {
+        break;
+      }
+      numberOfRotations++;
+    }
+    if ((j + numberOfRotations) <= lastPointOfContour)
+    {
+      for (uint16_t ii = 0; ii < numberOfRotations; ii++)
+      {
+        ttPoint_t tmp = glyph.points[firstPointOfContour];
+        for (uint16_t jj = firstPointOfContour; jj < lastPointOfContour; jj++)
+        {
+          glyph.points[jj] = glyph.points[jj + 1];
+        }
+        glyph.points[lastPointOfContour] = tmp;
+      }
+    }
+
+    while (j <= lastPointOfContour)
+    {
+      ttCoordinate_t pointsOfCurve[4];
+
+      // Serial.printf("%3d 0x%02X %5d %5d  - deg - ", j, glyph.points[j].flag, glyph.points[j].x, glyph.points[j].y);
+
+      // Examine the number of dimensions of a curve
+      pointsOfCurve[0].x = glyph.points[j].x;
+      pointsOfCurve[0].y = glyph.points[j].y;
+      uint16_t searchPoint = (j == lastPointOfContour) ? (firstPointOfContour) : (j + 1);
+      uint8_t degree = 1;
+      while (searchPoint != j)
+      {
+        // Serial.printf("%5d 0x%02X %5d %5d  - ", searchPoint, glyph.points[searchPoint].flag, glyph.points[searchPoint].x, glyph.points[searchPoint].y);
+        if (degree < 4)
+        {
+          pointsOfCurve[degree].x = glyph.points[searchPoint].x;
+          pointsOfCurve[degree].y = glyph.points[searchPoint].y;
+        }
+        if (glyph.points[searchPoint].flag & FLAG_ONCURVE)
+        {
+          break;
+        }
+        searchPoint = (searchPoint == lastPointOfContour) ? (firstPointOfContour) : (searchPoint + 1);
+        degree++;
+      }
+
+      // Serial.printf(" ---- degree: %5d ", degree);
+      // Replace Bezier curves of 4 dimensions or more with straight lines
+      if (degree >= 4)
+      {
+        uint16_t tmp_j = j;
+        uint16_t tmp_degree = 0;
+        while (tmp_degree < degree)
+        {
+          if (tmp_j > lastPointOfContour)
+          {
+            tmp_j = firstPointOfContour;
+          }
+          glyph.points[tmp_j].flag |= FLAG_ONCURVE;
+          tmp_j++;
+          tmp_degree++;
+        }
+      }
+      // Serial.println();
+
+      // Generate outline according to degree
+      switch (degree)
+      {
+      case 3: // third-order Bezier curve
+        x0 = pointsOfCurve[0].x;
+        y0 = pointsOfCurve[0].y;
+
+        for (float t = 0; t <= 1; t += 0.2)
+        {
+          x1 = (1 - t) * (1 - t) * (1 - t) * pointsOfCurve[0].x + 3 * (1 - t) * (1 - t) * t * pointsOfCurve[1].x + 3 * (1 - t) * t * t * pointsOfCurve[2].x + t * t * t * pointsOfCurve[3].x;
+          y1 = (1 - t) * (1 - t) * (1 - t) * pointsOfCurve[0].y + 3 * (1 - t) * (1 - t) * t * pointsOfCurve[1].y + 3 * (1 - t) * t * t * pointsOfCurve[2].y + t * t * t * pointsOfCurve[3].y;
+
+          this->addLine(map(x0, glyph.xMin, glyph.xMax, _x, _x + _width - 1),
+                        map(y0, this->yMin, this->yMax, _y + this->characterSize - 1, _y),
+                        map(x1, glyph.xMin, glyph.xMax, _x, _x + _width - 1),
+                        map(y1, this->yMin, this->yMax, _y + this->characterSize - 1, _y));
+          x0 = x1;
+          y0 = y1;
+        }
+        break;
+      case 2: // Second-order Bezier curve
+        x0 = pointsOfCurve[0].x;
+        y0 = pointsOfCurve[0].y;
+
+        for (float t = 0; t <= 1; t += 0.2)
+        {
+          x1 = (1 - t) * (1 - t) * pointsOfCurve[0].x + 2 * t * (1 - t) * pointsOfCurve[1].x + t * t * pointsOfCurve[2].x;
+          y1 = (1 - t) * (1 - t) * pointsOfCurve[0].y + 2 * t * (1 - t) * pointsOfCurve[1].y + t * t * pointsOfCurve[2].y;
+
+          this->addLine(map(x0, glyph.xMin, glyph.xMax, _x, _x + _width - 1),
+                        map(y0, this->yMin, this->yMax, _y + this->characterSize - 1, _y),
+                        map(x1, glyph.xMin, glyph.xMax, _x, _x + _width - 1),
+                        map(y1, this->yMin, this->yMax, _y + this->characterSize - 1, _y));
+          x0 = x1;
+          y0 = y1;
+        }
+
+        break;
+      default:
+        degree = 1;
+      case 1: // straight line
+        this->addLine(map(pointsOfCurve[0].x, glyph.xMin, glyph.xMax, _x, _x + _width - 1),
+                      map(pointsOfCurve[0].y, this->yMin, this->yMax, _y + this->characterSize - 1, _y),
+                      map(pointsOfCurve[1].x, glyph.xMin, glyph.xMax, _x, _x + _width - 1),
+                      map(pointsOfCurve[1].y, this->yMin, this->yMax, _y + this->characterSize - 1, _y));
+        break;
+      }
+      j += degree;
+    }
+    // Serial.println(this->numPoints);
+    this->addEndPoint(this->numPoints - 1);
+    this->addBeginPoint(this->numPoints);
+    // Serial.println("---Contour end---");
+  }
+  return;
+}
+
+/* Bresenham's line algorithm */
+void truetypeClass::addLine(int16_t _x0, int16_t _y0, int16_t _x1, int16_t _y1)
+{
+  // Serial.printf("addLine(%3d, %3d) -> (%3d, %3d)\n", _x0, _y0, _x1, _y1);
+  uint16_t dx = abs(_x1 - _x0);
+  uint16_t dy = abs(_y1 - _y0);
+  int16_t sx, sy, err, e2;
+
+  if (this->numPoints == 0)
+  {
+    this->addPoint(_x0, _y0);
+    this->addBeginPoint(0);
+  }
+  this->addPoint(_x1, _y1);
+
+  if (_x0 < _x1)
+  {
+    sx = 1;
+  }
+  else
+  {
+    sx = -1;
+  }
+  if (_y0 < _y1)
+  {
+    sy = 1;
+  }
+  else
+  {
+    sy = -1;
+  }
+  err = dx - dy;
+
+  for (;;)
+  {
+    this->addPixel(_x0, _y0, this->colorLine);
+    if ((_x0 == _x1) && (_y0 == _y1))
+    {
+      break;
+    }
+    e2 = 2 * err;
+    if (e2 > -dy)
+    {
+      err -= dy;
+      _x0 += sx;
+    }
+    if (e2 < dx)
+    {
+      err += dx;
+      _y0 += sy;
+    }
+  }
+}
+
+bool truetypeClass::isInside(int16_t _x, int16_t _y) {
+  int16_t windingNumber = 0;
+  uint16_t bpCounter = 0, epCounter = 0;
+  ttCoordinate_t point = {_x, _y};
+  ttCoordinate_t point1;
+  ttCoordinate_t point2;
+
+  for (uint16_t i = 0; i < this->numPoints; i++) {
+    point1 = this->points[i];
+    // Wrap?
+    if (i == this->endPoints[epCounter]) {
+      point2 = this->points[this->beginPoints[bpCounter]];
+      epCounter++;
+      bpCounter++;
+    } else {
+      point2 = this->points[i + 1];
+    }
+
+    if (point1.y <= point.y) {
+      if (point2.y > point.y) {
+        if (this->isLeft(&point1, &point2, &point) > 0) {
+          windingNumber++;
+        }
+      }
+    }
+    else
+    {
+      // start y > point.y (no test needed) 开始y>point.y（无需测试）
+      if (point2.y <= point.y)
+      {
+        if (this->isLeft(&point1, &point2, &point) < 0)
+        {
+          windingNumber--;
+        }
+      }
+    }
+  }
+
+  return (windingNumber != 0);
+}
+
+void truetypeClass::fillGlyph(int16_t _x_min, int16_t _y_min, int16_t _width)
+{
+  for (uint16_t y = _y_min; y < (_y_min + this->characterSize); y++)
+  {
+    ttCoordinate_t point1, point2;
+    ttCoordinate_t point;
+    point.y = y;
+
+    uint16_t intersectPointsNum = 0;
+    uint16_t bpCounter = 0;
+    uint16_t epCounter = 0;
+    uint16_t p2Num = 0;
+
+    for (uint16_t i = 0; i < numPoints; i++)
+    {
+      point1 = this->points[i];
+      // Wrap?
+      if (i == endPoints[epCounter])
+      {
+        p2Num = beginPoints[bpCounter];
+        epCounter++;
+        bpCounter++;
+      }
+      else
+      {
+        p2Num = i + 1;
+      }
+      point2 = this->points[p2Num];
+
+      if (point1.y <= y)
+      {
+        if (point2.y > y)
+        {
+          // Have a valid up intersect 有一个有效的上交叉
+          intersectPointsNum++;
+          pointsToFill = (ttWindIntersect_t *)realloc(pointsToFill, sizeof(ttWindIntersect_t) * intersectPointsNum);
+          pointsToFill[intersectPointsNum - 1].p1 = i;
+          pointsToFill[intersectPointsNum - 1].p2 = p2Num;
+          pointsToFill[intersectPointsNum - 1].up = 1;
+        }
+      }
+      else
+      {
+        // start y > point.y (no test needed) 开始y>point.y（无需测试）
+        if (point2.y <= y)
+        {
+          // Have a valid down intersect 有一个有效的下交点
+          intersectPointsNum++;
+          pointsToFill = (ttWindIntersect_t *)realloc(pointsToFill, sizeof(ttWindIntersect_t) * intersectPointsNum);
+          pointsToFill[intersectPointsNum - 1].p1 = i;
+          pointsToFill[intersectPointsNum - 1].p2 = p2Num;
+          pointsToFill[intersectPointsNum - 1].up = 0;
+        }
+      }
+    }
+
+    //Serial.print("_x_min:");Serial.println(_x_min);
+    //Serial.print("_width:");Serial.println(_width);
+    for (int16_t x = _x_min; x < (_x_min + _width); x++)
+    {
+      int16_t windingNumber = 0;
+      point.x = x;
+
+      for (uint16_t i = 0; i < intersectPointsNum; i++)
+      {
+        point1 = this->points[pointsToFill[i].p1];
+        point2 = this->points[pointsToFill[i].p2];
+
+        if (pointsToFill[i].up == 1)
+        {
+          if (isLeft(&point1, &point2, &point) > 0)
+          {
+            windingNumber++;
+          }
+        }
+        else
+        {
+          if (isLeft(&point1, &point2, &point) < 0)
+          {
+            windingNumber--;
+          }
+        }
+      }
+
+      if (windingNumber != 0)
+      {
+        this->addPixel(x, y, this->colorInside);
+      }
+    }
+
+    free(pointsToFill);
+    pointsToFill = NULL;
+  }
+}
+
+int32_t truetypeClass::isLeft(ttCoordinate_t *_p0, ttCoordinate_t *_p1, ttCoordinate_t *_point) {
+  return ((_p1->x - _p0->x) * (_point->y - _p0->y) - (_point->x - _p0->x) * (_p1->y - _p0->y));
+}
+
+void truetypeClass::textDraw(int16_t _x, int16_t _y, const wchar_t _character[])
+{
+  uint8_t c = 0;
+  uint16_t prev_code = 0;
+  // Serial.print("_character[c]:");Serial.println(_character[c], HEX);
+  while (_character[c] != '\0')
+  {
+    /*if ((_character[c] > 0 && _character[c] <= 32) || (_character[c] == L'　')) // 处理ASCII码
+    {
+      prev_code = 0;
+      if ((_character[c] == ' ') || (_character[c] == L'　')) // 半角空格和全角空格
+      {
+        _x += this->characterSize / 4; // 字符大小
+      }
+      c += 1;
+      continue; // 跳过
+    }*/
+
+    if ((_character[c] == ' ') || (_character[c] == L'　'))
+    {
+      prev_code = 0;
+      _x += this->characterSize / 4;
+      c++;
+      continue; // 跳过
+    }
+
+    Serial.printf("%c\n", _character[c]);
+    // Serial.print("_character[c]:");Serial.println(_character[c],HEX);
+    long startTime = micros();
+    this->charCode = this->codeToGlyphId(_character[c]); // 将字符代码转换为字形id
+    Serial.println("codeToGlyphId Time:"+String(micros()-startTime));
+    // Serial.print("this->charCode:"); Serial.println(this->charCode, HEX);
+    // Serial.print("this->charCode:"); Serial.println(this->charCode);
+    startTime = micros();
+    this->readGlyph(this->charCode); // 读取字形
+    Serial.println("readGlyph Time:"+String(micros()-startTime));
+    
+    startTime = micros();
+    _x += this->characterSpace;
+    if (prev_code != 0 && this->kerningOn)
+    {
+      int16_t kern = this->getKerning(prev_code, this->charCode); // space between charctor
+      _x += (kern * (int16_t)this->characterSize) / (this->yMax - this->yMin);
+    }
+    Serial.println("kerning Time:"+String(micros()-startTime));
+    startTime = micros();
+    prev_code = this->charCode;
+    startTime = micros();
+    ttHMetric_t hMetric = getHMetric(this->charCode); // 获取H度量
+    uint16_t width = this->characterSize * (glyph.xMax - glyph.xMin) / (this->yMax - this->yMin);
+    Serial.println("getHMetric Time:"+String(micros()-startTime));
+    // 到达显示器边缘和发现换行符时换下一行
+    if ((hMetric.leftSideBearing + width + _x) > this->end_x || _character[c] == '\n')
+    {
+      _x = this->start_x;
+      _y += this->characterSize;
+      if (_y > this->end_y) break;
+        
+      if (_character[c] == '\n')
+      {
+        //Serial.println("换行");
+        //Serial.print("_x:"); Serial.println(_x);
+        //Serial.print("_y:"); Serial.println(_y);
+        c++;
+        continue;
+      }
+    }
+
+    // Line breaks with line feed code 换行符和换行代码
+    /*if (_character[c] == '\n')
+    {
+      _x = this->start_x;
+      _y += this->characterSize;
+      if (_y > this->end_y)
+        break;
+      continue;
+    }*/
+
+    startTime = micros();
+    // Not compatible with Compound glyphs now 现在与复合字形不兼容
+    if (glyph.numberOfContours >= 0)
+    {
+       Serial.print("hMetric.leftSideBearing:"); 
+      // Serial.print("width:"); Serial.println(width);
+      //  写入帧缓冲区
+      startTime = micros();
+      this->generateOutline(hMetric.leftSideBearing + _x, _y, width);
+      Serial.println("generateOutline Time:"+String(micros()-startTime));
+      // 填充容器
+      startTime = micros();
+      this->fillGlyph(hMetric.leftSideBearing + _x, _y, width);
+      Serial.println("fillGlyph Time:"+String(micros()-startTime));
+      // Serial.println();
+    }
+    startTime = micros();
+    this->freePointsAll();
+    Serial.println("freePointsAll Time:"+String(micros()-startTime));
+    startTime = micros();
+    this->freeGlyph();
+    Serial.println("freeGlyph Time:"+String(micros()-startTime));
+
+    //_x += (hMetric.advanceWidth) ? (hMetric.advanceWidth) : (width);
+    // 使用哪个宽度？
+    if (hMetric.advanceWidth >= width)
+      _x += hMetric.advanceWidth;
+    else
+      _x += width;
+    lastWidth = _x; //记录宽度，下次调用时可节省计算时间
+    c++;
+    // Serial.println();
+  }
+}
+
+void truetypeClass::textDraw(int16_t _x, int16_t _y, const char _character[]) {
+  uint16_t length = 0;
+  while (_character[length] != '\0') {
+    length++;
+  }
+  wchar_t *wcharacter = (wchar_t *)calloc(sizeof(wchar_t), length + 1);
+  for (uint16_t i = 0; i < length; i++) {
+    wcharacter[i] = _character[i];
+  }
+  this->textDraw(_x, _y, wcharacter);
+  free(wcharacter);
+  wcharacter = NULL;
+}
+
+void truetypeClass::textDraw(int16_t _x, int16_t _y, const String _string)
+{
+  uint16_t length = _string.length();
+  wchar_t *wcharacter = (wchar_t *)calloc(sizeof(wchar_t), length + 1);
+  this->stringToWchar(_string, wcharacter);
+  this->textDraw(_x, _y, wcharacter);
+  free(wcharacter);
+  wcharacter = NULL;
+}
+
+void truetypeClass::addPixel(int16_t _x, int16_t _y, uint8_t _colorCode) {
+  //Serial.printf("addPix(%3d, %3d)\n", _x, _y);
+  uint8_t *buf_ptr;
+
+  //limit to boundary co-ordinates the boundary is always in the same orientation as the string not the buffer
+  if ((_x < this->start_x) || (_x >= this->end_x) || (_y >= this->end_y)) {
+    return;
+  }
+
+  //Rotate co-ordinates relative to the buffer
+  uint16_t temp = _x;
+  switch (this->stringRotation) {
+    case ROTATE_270:
+      _x = _y;
+      _y = this->displayHeight - 1 - temp;
+      break;
+    case ROTATE_180:
+      _x = this->displayWidth - 1 - _x;
+      _y = this->displayHeight - 1 - _y;
+      break;
+    case ROTATE_90:
+      _x = this->displayWidth - 1 - _y;
+      _y = temp;
+      break;
+    case 0:
+    default:
+      break;
+  }
+
+  //out of range
+  if ((_x < 0) || ((uint16_t)_x >= this->displayWidth) || ((uint16_t)_y >= this->displayHeight) || (_y < 0)) {
+    return;
+  }
+
+  if (this->framebufferDirection) {
+    //Framebuffer bit direction: Vertical
+  } else {
+    //Framebuffer bit direction: Horizontal
+    switch (this->framebufferBit) {
+      case 8: //8bit Horizontal
+        {
+          this->userFrameBuffer[(uint16_t)_x + (uint16_t)_y * this->displayWidthFrame] = _colorCode;
+        }
+        break;
+      case 4: //4bit Horizontal
+        {
+          buf_ptr = &this->userFrameBuffer[((uint16_t)_x / 2) + (uint16_t)_y * this->displayWidthFrame];
+          _colorCode = _colorCode & 0b00001111;
+
+          if ((uint16_t)_x % 2) {
+            *buf_ptr = (*buf_ptr & 0b00001111) + (_colorCode << 4);
+          } else {
+            *buf_ptr = (*buf_ptr & 0b11110000) + _colorCode;
+          }
+        }
+        break;
+      case 1: //1bit Horizontal
+      default:
+        {
+          buf_ptr = &this->userFrameBuffer[((uint16_t)_x / 8) + (uint16_t)_y * this->displayWidthFrame];
+          uint8_t bitMask = 0b10000000 >> ((uint16_t)_x % 8);
+          uint8_t bit = (_colorCode) ? (bitMask) : (0b00000000);
+          *buf_ptr = (*buf_ptr & ~bitMask) + bit;
+        }
+        break;
+    }
+  }
+  return;
+}
+//获取上次的宽度
+uint16_t truetypeClass::getLastWidth()
+{
+  return lastWidth;
+}
+uint16_t truetypeClass::getStringWidth(const wchar_t _character[])
+{
+  uint16_t prev_code = 0;
+  uint16_t c = 0;
+  uint16_t output = 0;
+
+  while (_character[c] != '\0')
+  {
+    /*if ((_character[c] > 0 && _character[c] <= 32) || (_character[c] == L'　')) // 处理ASCII码
+    {
+      prev_code = 0;
+      if ((_character[c] == ' ') || (_character[c] == L'　')) // 半角空格和全角空格
+      {
+        output += this->characterSize / 4; // 字符大小
+      }
+      c += 1;
+      continue; // 跳过
+    }*/
+
+    //space (half-width, full-width)
+    if ((_character[c] == ' ') || (_character[c] == L'　'))
+    {
+      prev_code = 0;
+      output += this->characterSize / 4;
+      c++;
+      continue;
+    }
+
+    uint16_t code = this->codeToGlyphId(_character[c]);
+    this->readGlyph(code, 1);
+
+    output += this->characterSpace;
+    if (prev_code != 0 && this->kerningOn) {
+      int16_t kern = this->getKerning(prev_code, code); //space between charctor
+      output += (kern * (int16_t)this->characterSize) / (this->yMax - this->yMin);
+    }
+    prev_code = code;
+
+    ttHMetric_t hMetric = getHMetric(code);
+    uint16_t width = this->characterSize * (glyph.xMax - glyph.xMin) / (this->yMax - this->yMin);
+    //output += (hMetric.advanceWidth) ? (hMetric.advanceWidth) : (width);
+    //使用哪个宽度？
+    if (hMetric.advanceWidth >= width)  output += hMetric.advanceWidth;
+    else                                output += width;
+    c++;
+  }
+
+  return output;
+}
+
+uint16_t truetypeClass::getStringWidth(const char _character[]) {
+  uint16_t length = 0;
+  while (_character[length] != '\0') {
+    length++;
+  }
+  wchar_t *wcharacter = (wchar_t *)calloc(sizeof(wchar_t), length + 1);
+  for (uint16_t i = 0; i < length; i++) {
+    wcharacter[i] = _character[i];
+  }
+  return this->getStringWidth(wcharacter);
+  free(wcharacter);
+  wcharacter = NULL;
+}
+
+uint16_t truetypeClass::getStringWidth(const String _string) {
+  uint16_t length = _string.length();
+  wchar_t *wcharacter = (wchar_t *)calloc(sizeof(wchar_t), length + 1);
+  this->stringToWchar(_string, wcharacter);
+  return this->getStringWidth(wcharacter);
+  free(wcharacter);
+  wcharacter = NULL;
+}
+
+/* Points 添加点*/
+void truetypeClass::addPoint(int16_t _x, int16_t _y)
+{
+  this->numPoints++;
+  this->points = (ttCoordinate_t *)realloc(this->points, sizeof(ttCoordinate_t) * this->numPoints);
+  this->points[(this->numPoints - 1)].x = _x;
+  this->points[(this->numPoints - 1)].y = _y;
+}
+//添加起点
+void truetypeClass::addBeginPoint(uint16_t _bp) {
+  this->numBeginPoints++;
+  this->beginPoints = (uint16_t *)realloc(this->beginPoints, sizeof(uint16_t) * this->numBeginPoints);
+  this->beginPoints[(this->numBeginPoints - 1)] = _bp;
+}
+
+void truetypeClass::addEndPoint(uint16_t _ep) {
+  this->numEndPoints++;
+  this->endPoints = (uint16_t *)realloc(this->endPoints, sizeof(uint16_t) * this->numEndPoints);
+  this->endPoints[(this->numEndPoints - 1)] = _ep;
+}
+
+void truetypeClass::freePointsAll() {
+  this->freePoints();
+  this->freeBeginPoints();
+  this->freeEndPoints();
+}
+
+void truetypeClass::freePoints()
+{
+  free(this->points);
+  this->points = NULL;
+  this->numPoints = 0;
+}
+
+void truetypeClass::freeBeginPoints()
+{
+  free(this->beginPoints);
+  this->beginPoints = NULL;
+  this->numBeginPoints = 0;
+}
+
+void truetypeClass::freeEndPoints()
+{
+  free(this->endPoints);
+  this->endPoints = NULL;
+  this->numEndPoints = 0;
+}
+
+/* file */
+/* 查找指定表名的第一个位置 */
+uint32_t truetypeClass::seekToTable(const char *name) {
+  for (int i = 0; i < numTables; i++) {
+    if (strcmp(table[i].name, name) == 0) {
+      file.seek(table[i].offset);
+      return table[i].offset;
+    }
+  }
+  return 0;
+}
+
+/* calculate */
+void truetypeClass::stringToWchar(String _string, wchar_t _charctor[]) {
+  uint16_t s = 0;
+  uint8_t c = 0;
+  uint32_t codeu32;
+  //Serial.print("_string:");Serial.println(_string);
+  while (_string[s] != '\0')
+  {
+    int numBytes = GetU8ByteCount(_string[s]);
+    if (numBytes == 0) break; //防止无限循环 触发看门狗
+    //Serial.print("numBytes:");Serial.println(numBytes);
+    switch (numBytes)
+    {
+      case 1:
+        codeu32 = char32_t(uint8_t(_string[s]));
+        s += 1;
+        break;
+      case 2:
+        if (!IsU8LaterByte(_string[s + 1])) {
+          continue;
+        }
+        if ((uint8_t(_string[s]) & 0x1E) == 0) {
+          continue;
+        }
+
+        codeu32 = char32_t(_string[s] & 0x1F) << 6;
+        codeu32 |= char32_t(_string[s + 1] & 0x3F);
+        s += 2;
+        break;
+      case 3:
+        if (!IsU8LaterByte(_string[s + 1]) || !IsU8LaterByte(_string[s + 2])) {
+          continue;
+        }
+        if ((uint8_t(_string[s]) & 0x0F) == 0 &&
+            (uint8_t(_string[s + 1]) & 0x20) == 0) {
+          continue;
+        }
+
+        codeu32 = char32_t(_string[s] & 0x0F) << 12;
+        codeu32 |= char32_t(_string[s + 1] & 0x3F) << 6;
+        codeu32 |= char32_t(_string[s + 2] & 0x3F);
+        s += 3;
+        break;
+      case 4:
+        if (!IsU8LaterByte(_string[s + 1]) || !IsU8LaterByte(_string[s + 2]) ||
+            !IsU8LaterByte(_string[s + 3])) {
+          continue;
+        }
+        if ((uint8_t(_string[s]) & 0x07) == 0 &&
+            (uint8_t(_string[s + 1]) & 0x30) == 0) {
+          continue;
+        }
+
+        codeu32 = char32_t(_string[s] & 0x07) << 18;
+        codeu32 |= char32_t(_string[s + 1] & 0x3F) << 12;
+        codeu32 |= char32_t(_string[s + 2] & 0x3F) << 6;
+        codeu32 |= char32_t(_string[s + 3] & 0x3F);
+        s += 4;
+        break;
+      default:
+        continue;
+    }
+
+    if (codeu32 < 0 || codeu32 > 0x10FFFF) {
+      continue;
+    }
+
+    if (codeu32 < 0x10000) {
+      _charctor[c] = char16_t(codeu32);
+    } else {
+      _charctor[c] = ((char16_t((codeu32 - 0x10000) % 0x400 + 0xDC00)) << 8) || (char16_t((codeu32 - 0x10000) / 0x400 + 0xD800));
+    }
+    c++;
+  }
+  _charctor[c] = 0;
+}
+
+uint8_t truetypeClass::GetU8ByteCount(char _ch)
+{
+  if (0 <= uint8_t(_ch) && uint8_t(_ch) < 0x80) {
+    return 1;
+  }
+  if (0xC2 <= uint8_t(_ch) && uint8_t(_ch) < 0xE0) {
+    return 2;
+  }
+  if (0xE0 <= uint8_t(_ch) && uint8_t(_ch) < 0xF0) {
+    return 3;
+  }
+  if (0xF0 <= uint8_t(_ch) && uint8_t(_ch) < 0xF8) {
+    return 4;
+  }
+  return 0;
+}
+
+bool truetypeClass::IsU8LaterByte(char _ch) {
+  return 0x80 <= uint8_t(_ch) && uint8_t(_ch) < 0xC0;
+}
+
+/* get uint8_t at the current position */
+uint8_t truetypeClass::getUInt8t()
+{
+  uint8_t x;
+
+  file.read(&x, 1);
+  return x;
+}
+
+/* get int16_t at the current position 在当前位置获取int16_t */
+int16_t truetypeClass::getInt16t()
+{
+  byte x[2];
+  file.read(x, 2);
+  /*Serial.print("x[0]:"); Serial.println(x[0]);
+  Serial.print("x[1]:"); Serial.println(x[1]);
+  Serial.print("x:"); Serial.println((x[0] << 8) | x[1]);*/
+  return (x[0] << 8) | x[1];
+}
+
+/* 获取uint16_t至当前位置 */
+uint16_t truetypeClass::getUInt16t()
+{
+  byte x[2];
+  file.read(x, 2);
+  /*Serial.print("x[0]:"); Serial.println(x[0]);
+  Serial.print("x[1]:"); Serial.println(x[1]);
+  Serial.print("x:"); Serial.println((x[0] << 8) | x[1]);*/
+  return (x[0] << 8) | x[1];
+}
+
+/* get uint32_t at the current position */
+uint32_t truetypeClass::getUInt32t()
+{
+  byte x[4];
+
+  file.read(x, 4);
+  return (x[0] << 24) | (x[1] << 16) | (x[2] << 8) | x[3];
+}
+
+/* 从缓存中获取数据的函数 */
+uint8_t truetypeClass::getCachedUInt8t(uint32_t offset) {
+  if (!hasCache || offset >= charDataCache.dataSize) {
+    return 0;
+  }
+  return charDataCache.data[offset];
+}
+
+int16_t truetypeClass::getCachedInt16t(uint32_t offset) {
+  if (!hasCache || offset + 1 >= charDataCache.dataSize) {
+    return 0;
+  }
+  int16_t val = charDataCache.data[offset] << 8 | charDataCache.data[offset + 1];
+  return this->swap_int16(val);
+}
+int16_t truetypeClass::swap_int16(int16_t _val) {
+    return (_val << 8) | ((_val >> 8) & 0xFF);
+}
+
+uint32_t truetypeClass::swap_uint32(uint32_t _val) {
+    return ((_val << 24) & 0xFF000000) |
+           ((_val << 8) & 0x00FF0000) |
+           ((_val >> 8) & 0x0000FF00) |
+           ((_val >> 24) & 0x000000FF);
+}
+uint16_t truetypeClass::getCachedUInt16t(uint32_t offset) {
+  if (!hasCache || offset + 1 >= charDataCache.dataSize) {
+    return 0;
+  }
+  uint16_t val = charDataCache.data[offset] << 8 | charDataCache.data[offset + 1];
+  return (val << 8) | ((val >> 8) & 0xFF);
+}
+
+uint32_t truetypeClass::getCachedUInt32t(uint32_t offset) {
+  if (!hasCache || offset + 3 >= charDataCache.dataSize) {
+    return 0;
+  }
+  uint32_t val = charDataCache.data[offset] << 24 | charDataCache.data[offset + 1] << 16 | 
+                 charDataCache.data[offset + 2] << 8 | charDataCache.data[offset + 3];
+  return this->swap_uint32(val);
+}
+
+/* 缓存字符数据 */
+bool truetypeClass::cacheCharData(uint16_t _code) {
+  // 如果已经缓存了该字符，直接返回
+  if (hasCache && charDataCache.code == _code) {
+    return true;
+  }
+  
+  // 释放旧缓存
+  freeCacheData();
+  
+  // 获取glyf表偏移
+  uint32_t glyfOffset = this->seekToTable("glyf");
+  if (glyfOffset == 0) {
+    return false;
+  }
+  
+  // 获取字形偏移
+  uint32_t glyphOffset = getGlyphOffset(_code);
+  if (glyphOffset == 0) {
+    return false;
+  }
+  
+  // 计算需要缓存的数据大小
+  file.seek(glyphOffset);
+  int16_t numberOfContours = this->getInt16t();
+  
+  // 如果是复合字形，需要缓存更多数据
+  uint32_t dataSize = 0;
+  uint32_t endPos = 0;
+  
+  if (numberOfContours >= 0) {
+    // 简单字形
+    // 先定位到最后的点数据，计算需要的空间
+    file.seek(glyphOffset + 10); // 跳过头部信息
+    
+    // 跳过轮廓结束点
+    for (int16_t i = 0; i < numberOfContours; i++) {
+      this->getUInt16t();
+    }
+    
+    // 跳过指令
+    uint16_t instructionLength = this->getUInt16t();
+    file.seek(file.position() + instructionLength);
+    
+    // 估算点数据大小（保守估计）
+    uint16_t numPoints = 0;
+    for (int16_t i = 0; i < numberOfContours; i++) {
+      file.seek(glyphOffset + 10 + i * 2);
+      uint16_t endPt = this->getUInt16t();
+      if (endPt > numPoints) {
+        numPoints = endPt;
+      }
+    }
+    numPoints++; // 最后一个点的索引+1
+    
+    // 每个点需要的最大空间（flag + x + y）
+    dataSize = glyphOffset + 10 + numberOfContours * 2 + 2 + instructionLength + numPoints * 5;
+    
+    // 对于安全起见，额外增加一些空间
+    dataSize += 100;
+    
+    // 确保不超过文件大小
+    if (dataSize > file.size()) {
+      dataSize = file.size();
+    }
+    
+    endPos = glyphOffset + dataSize;
+  } else {
+    // 复合字形，估算需要的空间
+    // 直接缓存从字形开始到文件结束的部分（简单处理）
+    dataSize = file.size() - glyphOffset;
+    endPos = file.size();
+  }
+  
+  // 分配内存
+  charDataCache.data = (uint8_t*)malloc(dataSize);
+  if (!charDataCache.data) {
+    return false;
+  }
+  
+  // 读取数据
+  file.seek(glyphOffset);
+  for (uint32_t i = 0; i < dataSize && file.position() < endPos; i++) {
+    charDataCache.data[i] = this->getUInt8t();
+  }
+  
+  // 设置缓存信息
+  charDataCache.code = _code;
+  charDataCache.dataSize = dataSize;
+  charDataCache.glyphOffset = glyphOffset - glyfOffset; // 相对于glyf表的偏移
+  hasCache = true;
+  
+  return true;
+}
+
+/* 释放字符数据缓存 */
+void truetypeClass::freeCacheData() {
+  if (hasCache && charDataCache.data) {
+    free(charDataCache.data);
+    charDataCache.data = NULL;
+    charDataCache.dataSize = 0;
+    hasCache = false;
+  }
+}

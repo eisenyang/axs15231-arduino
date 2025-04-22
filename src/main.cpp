@@ -1,21 +1,14 @@
+#include <LittleFS.h>
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <FS.h>
 #include <TFT_eSPI.h>
 #include "SpriteTextManager.h"
 #include "lcd.h"
 #include <TFT_eSPI.h>
-#include <FS.h>
-#include <LittleFS.h>
-#include "simkai160.h"
-#include "SPIFFS.h"
-// 必须首先包含ft2build.h
-//#include <ft2build.h>
-//#include "esp_heap_caps.h"
-//#include "TruetypeManager.h"
 #include "truetype_Arduino.h"
-SpriteTextManager spriteTextManager;
+#define BUF_COUNT  2
+#define QUEUE_LENGTH 2
 #define WIDTH_BYTES 20
 #define HEIGHT_PIXELS 160
 #define WIDTH_PIXELS 160
@@ -23,30 +16,22 @@ SpriteTextManager spriteTextManager;
 #define FRAMEBUFFER_SIZE (WIDTH_BYTES * HEIGHT_PIXELS)
 #define BITS_PER_PIXEL 1 // either 1, 4, or 8
 #define DISPLAY_WIDTH (WIDTH_BYTES * (8 / BITS_PER_PIXEL))
-// 然后包含其他FreeType头文件
-// #include FT_FREETYPE_H      // 主头文件（自动包含ftsystem.h、ftimage.h等）
-// #include FT_GLYPH_H         // 如果需要字形操作
-// #include FT_OUTLINE_H       // 如果需要轮廓处理
+#define MY_TTF "/simhei.ttf"
 
-uint8_t *framebuffer;
-// #define WIDTH_BYTES 20
-// #define HEIGHT_PIXELS 160
-// #define DISPLAY_HEIGHT HEIGHT_PIXELS
-// #define FRAMEBUFFER_SIZE (WIDTH_BYTES * HEIGHT_PIXELS)
-// #define BITS_PER_PIXEL 4 // either 1, 4, or 8
-// #define DISPLAY_WIDTH (WIDTH_BYTES * (8 / BITS_PER_PIXEL))
-#define MY_TTF "/hkjgxjh.ttf"
-//#define MY_TTF "/simhei.ttf"
-#define QUEUE_LENGTH 1
+static unsigned long startTime = millis();
+static unsigned long count = 0;
+SpriteTextManager spriteTextManager;
+uint8_t *framebuffer[BUF_COUNT];
+static uint8_t handlerBufIndex = 1;
+
 // 定义消息结构体
 typedef struct {
-  uint16_t unicode;
-  bool processed;
-} TextMessage_t;
+  uint8_t buf_id;   // 1 或 2
+  uint8_t *buf_data; // 图片数据指针
+} frameBufMessage_t;
 
 // 声明队列句柄
-QueueHandle_t textQueue;
-static bool handle_flag = false;
+QueueHandle_t frameBufQueue;
 truetypeClass truetype = truetypeClass();
 
 
@@ -54,13 +39,13 @@ truetypeClass truetype = truetypeClass();
 
 bool checkFileExists(const char *filename)
 {
-  if (!SPIFFS.begin(true))
+  if (!LittleFS.begin())
   {
     Serial.println("SPIFFS挂载失败");
     return false;
   }
 
-  if (SPIFFS.exists(filename))
+  if (LittleFS.exists(filename))
   {
     Serial.println("文件存在");
     return true;
@@ -156,73 +141,83 @@ void initSprite(){
   Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
 
 }
-void initTruetype()
-{
-    
-    framebuffer = (uint8_t *)calloc(sizeof(uint8_t), FRAMEBUFFER_SIZE);
-    //memset(framebuffer, 0, FRAMEBUFFER_SIZE);
-    if (!framebuffer)
-    {
-      Serial.println("alloc memory failed !!!");
-      while (1)
-        ;
+
+void freeFramebuffer(uint8_t index){
+  if(framebuffer[index]){
+    free(framebuffer[index]);
+    framebuffer[index] = nullptr;
+  }
+}
+void freeAllFramebuffer(){
+  for(int i = 0 ;i < BUF_COUNT; i++){
+      freeFramebuffer(i);
     }
-    SPIFFS.begin(true);
-    File fontFile = SPIFFS.open(MY_TTF, "r");
+}
+bool initTruetype()
+{
+    for(int i = 0 ;i < BUF_COUNT; i++){
+      framebuffer[i] = (uint8_t *)calloc(sizeof(uint8_t), FRAMEBUFFER_SIZE);
+      if (!framebuffer[i])
+      {
+        Serial.println("alloc memory failed !!!");
+        freeAllFramebuffer();
+        return false;
+      }
+    }
+    
+    //memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+    
+    LittleFS.begin();
+    File fontFile = LittleFS.open(MY_TTF, "r");
     Serial.println("fontFile.name():"+String(fontFile.name()));
     Serial.println("fontFile.size():"+String(fontFile.size()));
-    truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer);
+    
     if (!truetype.setTtfFile(fontFile))
     {
       Serial.println("read ttf failed");
+      freeAllFramebuffer();
+      return false;
     }
-    else
-    {
-      truetype.setCharacterSize(160);
-      truetype.setTextBoundary(0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-      truetype.setCharacterSpacing(5);
-      truetype.setTextColor(0x01, 0x01);
-    }
+
+    truetype.setCharacterSize(160);
+    truetype.setTextBoundary(0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    truetype.setCharacterSpacing(0);
+    truetype.setTextColor(0x01, 0x01);
+    return true;
+    
 }
-void readTruetype()
+uint8_t * readTruetype(uint8_t bufIndex)
 {
-    //static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
-    static String draw_string[] = {"你","好","世","界","欢","迎","来","到","美","丽","的","中","国"};
+    static String draw_string[] = {"以","无","所","得","故","，","菩","提","萨","埵","，","依","般","若","波","罗","蜜","多","故","，","心","无","罣","碍","；","无","罣","碍","故","，","无","有","恐","怖","，","远","离","颠","倒","梦","想","，","究","竟","涅","槃","。","三","世","诸","佛","，","依","般","若","波","罗","蜜","多","故","，","得","阿","耨","多","罗","三","藐","三","菩","提","。"};
+    //static String draw_string[] = {"老","伍","牛","X","欢","迎","来","到","美","丽","的","中","国"};
     static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
     static uint16_t draw_string_index = 0;
     String str = draw_string[draw_string_index];
     uint16_t unicode = getChineseUnicode(str);
-    TextMessage_t message;
-    message.unicode = unicode;
-    message.processed = false;
-    unsigned long startTimeRead = micros();
-    //truetype.readText(unicode);
-    memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+    
+
+    unsigned long startTimeRead = millis();
+    memset(framebuffer[bufIndex], 0, FRAMEBUFFER_SIZE);
+    truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer[bufIndex]);
     truetype.textDraw(0,0,str);
-    unsigned long endTimeRead = micros();
-    Serial.println("readText Time:"+String(endTimeRead-startTimeRead));
+    unsigned long endTimeRead = millis();
+    //Serial.println("readText Time:"+String((endTimeRead-startTimeRead))+"ms");
     draw_string_index++;
     if(draw_string_index >= draw_string_len){
         draw_string_index = 0;
-    }    
+    }
+    return framebuffer[bufIndex];
 }
-void unInitTruetype(){
-  free(framebuffer);
-  truetype.end();
-}
-void handleTruetype()
+
+void handleTruetype(uint8_t index)
 {
 
-    unsigned long startTime = micros();
     static uint16_t address = LCD_HEIGHT;
     if (address <= 0)
     {
         address = LCD_HEIGHT;
-    }
-    //memset(framebuffer, 0, FRAMEBUFFER_SIZE);
-    //truetype.pushText();
+    }    
     
-    unsigned long startTimeTotal = micros();
     static uint16_t top_offset = 2;
     for(int y = 0; y < HEIGHT_PIXELS; y++){
       //一个循环就是一行
@@ -231,7 +226,7 @@ void handleTruetype()
           if (y < HEIGHT_PIXELS)
           {
               uint16_t y_offset = address-1;
-              uint16_t color = get_bitmap_color(framebuffer, y, x);
+              uint16_t color = get_bitmap_color(framebuffer[index], y, x);
               //Serial.println("color:"+String(color));
               if (x == 0)
               {
@@ -253,50 +248,61 @@ void handleTruetype()
               spriteTextManager.clearSprite();
           }
       }
-      delay(12);
+      vTaskDelay(5);
       spriteTextManager.scrollStart(address);
       address--;
-      
-    }
+  }
 }
 
 
 
 void TaskFrontTypeHandle(void *pvParameters)
 {
-    TextMessage_t receivedMessage;
-     Serial.println("TaskHandle");
+    frameBufMessage_t frameBufMessage;
     while(1){
-        if (xQueueReceive(textQueue, &receivedMessage, portMAX_DELAY) == pdPASS) {
-            handle_flag = true;
-            Serial.println("xQueueReceive===>");
-            handleTruetype();
-            //handle_flag = false;
+
+        if (xQueueReceive(frameBufQueue, &frameBufMessage, portMAX_DELAY) == pdPASS) {
+            uint8_t index = frameBufMessage.buf_id;
+            handlerBufIndex = index;
+            handleTruetype(index);
         }
+       //vTaskDelay(pdMS_TO_TICKS(1000));
         //delay(1000);
     }
 }
 
 void TaskFrontTypeRead(void *pvParameters)
 {
-    Serial.println("TaskFrontTypeRead");
+
+
+    TickType_t xLastWakeTime;
+    const TickType_t xFrequency = pdMS_TO_TICKS(20); // 1秒
+
+    // 获取当前时间（系统启动后的 tick 数）
+    xLastWakeTime = xTaskGetTickCount();
+
+    
     while(1){
       //unsigned long startTime = micros();
-      delay(10);
+        if(uxQueueMessagesWaiting(frameBufQueue) < QUEUE_LENGTH-1){
+          if(handlerBufIndex == 1){
+            uint8_t* buf = readTruetype(0);
+            frameBufMessage_t  frameBufMessage;
+            frameBufMessage.buf_id = 0;
+            frameBufMessage.buf_data = buf;
+            xQueueSend(frameBufQueue, &frameBufMessage, portMAX_DELAY);
+            //delay(10000);
+            Serial.println("TaskFrontTypeRead");
+          }else{
+            uint8_t* buf = readTruetype(1);
+            frameBufMessage_t  frameBufMessage;
+            frameBufMessage.buf_id = 1;
+            frameBufMessage.buf_data = buf;
+            xQueueSend(frameBufQueue, &frameBufMessage, portMAX_DELAY);
+          }
+        }
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
         
-        if(uxQueueMessagesWaiting(textQueue) == QUEUE_LENGTH){
-            Serial.println("Queue is full");
-            return;
-        }
-        unsigned long startTimeRead = micros();
-        readTruetype();
-        unsigned long endTimeRead = micros();
-        Serial.println("readFrontType Time:"+String(endTimeRead-startTimeRead));
-        TextMessage_t message;
-        message.processed = false;
-        if(xQueueSend(textQueue, &message, pdMS_TO_TICKS(10)) == pdPASS){
-          Serial.println("xQueueSend===>");
-        }
     }
 }
 
@@ -307,38 +313,20 @@ void setup()
     {
         delay(100);
     }
-    
-    // 测试Unicode函数
-        // 创建队列
-    // textQueue = xQueueCreate(QUEUE_LENGTH, sizeof(TextMessage_t));
-    // if (textQueue == NULL) {
-    //     Serial.println("Queue creation failed!");
-    //     while(1); // 如果队列创建失败，停止执行
-    // }
+  
+    frameBufQueue = xQueueCreate(QUEUE_LENGTH, sizeof(frameBufMessage_t *)); 
     checkFileExists(MY_TTF);
     initSprite();
     initTruetype();
-
-
-
-
-    // 打开字体文件
-    File fontFile = SPIFFS.open(MY_TTF, "r");
-    if (!fontFile) {
-      Serial.println("无法打开字体文件");
-      return;
-    }
-
-
     
-    // xTaskCreatePinnedToCore(TaskFrontTypeRead, "TaskFrontTypeRead", 16384, NULL, 1, NULL, 1); 
-    // xTaskCreatePinnedToCore(TaskFrontTypeHandle, "TaskFrontTypeHandle", 8192, NULL, 1, NULL, 0); // 在核心0上运行
+    xTaskCreatePinnedToCore(TaskFrontTypeRead, "TaskFrontTypeRead", 8048, NULL, 1, NULL, 1); 
+    xTaskCreatePinnedToCore(TaskFrontTypeHandle, "TaskFrontTypeHandle", 8048, NULL, 1, NULL, 0); // 在核心0上运行
     
 }
 
 void loop()
 {
-    readTruetype();
-    delay(1000);
-    handleTruetype();
+    //readTruetype(0);
+    //handleTruetype();
+    ;
 }

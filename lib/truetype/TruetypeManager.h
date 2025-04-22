@@ -21,19 +21,18 @@ class TruetypeManager{
   public:
     TruetypeManager();
     ~TruetypeManager();
+    bool initTruetype(const String& path, truetypeClass *truetype);
+    uint8_t *readTextToFramebuffer(uint8_t index);
+
+    uint16_t getPixelColor(uint8_t *framebuffer, uint16_t x, uint16_t y);
+    uint16_t getChineseUnicode(const String& character);
+    //truetypeClass *getTruetype();
     bool checkFileExists(const char *filename);
-    uint8_t initTtfFile(const char *ttf_file);
-    void initTextDraw();
-    void init();
-    void setDrawString(String draw_string[]);
-    uint8_t *readTextToBuffer(uint8_t bufIndex);
+    uint8_t *getFramebuffer(uint8_t index);
+    void setFramebuffer(uint8_t index, uint8_t *framebuffer);
     void freeFramebuffer(uint8_t index);
     void freeAllFramebuffer();
-    uint16_t getPixelColor(uint8_t bufIndex, uint16_t x, uint16_t y);
   private:
     truetypeClass _truetype = truetypeClass();
-    String *_draw_string;
-    uint16_t _draw_string_len;
-    uint16_t _draw_string_index;
     uint8_t *_framebuffer[BUF_COUNT];
 };

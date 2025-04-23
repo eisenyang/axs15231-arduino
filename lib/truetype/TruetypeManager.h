@@ -16,23 +16,30 @@
 #define FRAMEBUFFER_SIZE (WIDTH_BYTES * HEIGHT_PIXELS)
 #define BITS_PER_PIXEL 1 // either 1, 4, or 8
 #define DISPLAY_WIDTH (WIDTH_BYTES * (8 / BITS_PER_PIXEL))
-
+typedef struct Framebuffer{
+  uint8_t *framebuffer;
+  bool hadData;
+} framebuffer_t;
 class TruetypeManager{
   public:
     TruetypeManager();
     ~TruetypeManager();
     bool initTruetype(const String& path, truetypeClass *truetype);
-    uint8_t *readTextToFramebuffer(uint8_t index);
-
+    uint8_t *readTextToFramebuffer();
     uint16_t getPixelColor(uint8_t *framebuffer, uint16_t x, uint16_t y);
     uint16_t getChineseUnicode(const String& character);
-    //truetypeClass *getTruetype();
     bool checkFileExists(const char *filename);
-    uint8_t *getFramebuffer(uint8_t index);
-    void setFramebuffer(uint8_t index, uint8_t *framebuffer);
+    framebuffer_t *getFramebuffer(uint8_t index);
+    bool resetFramebuffer(uint8_t index);
+    //void setFramebuffer(uint8_t index, uint8_t *framebuffer);
     void freeFramebuffer(uint8_t index);
     void freeAllFramebuffer();
   private:
     truetypeClass _truetype = truetypeClass();
-    uint8_t *_framebuffer[BUF_COUNT];
+    //uint8_t *_framebuffer[BUF_COUNT];
+    // uint8_t _readFromTtfIndex = -1;
+    // uint8_t _writeToDisplayIndex = -1;
+    // uint8_t _framebufferNum = 0;
+    // uint8_t _availableIndex = -1;
+    framebuffer_t _framebuffers[BUF_COUNT];
 };

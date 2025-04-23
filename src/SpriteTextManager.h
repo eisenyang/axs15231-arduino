@@ -26,6 +26,7 @@ class SpriteTextManager{
         void scrollStart(int16_t address);
         void drawPixel2LCD(int16_t x,int16_t y,uint16_t color);
         void setRowAddress(uint16_t x_offset,uint16_t y);
+        void set2RowAddress(uint16_t x_offset,uint16_t y);
         void enableWriteColor();
         void disableWriteColor();
         void writeColor(uint16_t color);

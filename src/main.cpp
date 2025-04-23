@@ -10,16 +10,9 @@
 #define MY_TTF "/simhei.ttf"
 
 SpriteTextManager spriteTextManager;
-static uint8_t handlerBufIndex = 1;
 TruetypeManager truetypeManager;
-// 定义消息结构体
-typedef struct {
-  uint8_t buf_id;   // 1 或 2
-  uint8_t *buf_data; // 图片数据指针
-} frameBufMessage_t;
-
-// 声明队列句柄
-QueueHandle_t frameBufQueue;
+// 定义定时器句柄
+TimerHandle_t xTimer;
 void initSprite(){
   spriteTextManager.init();
   spriteTextManager.fillScreen(TFT_BLACK);
@@ -35,7 +28,7 @@ void initSprite(){
 }
 
 
-void handleTruetype(uint8_t *framebuffer)
+void handleTruetype(uint8_t *framebuffer,uint16_t y)
 {
 
     static uint16_t address = LCD_HEIGHT;
@@ -45,88 +38,73 @@ void handleTruetype(uint8_t *framebuffer)
     }    
     
     static uint16_t top_offset = 2;
-    for(int y = 0; y < HEIGHT_PIXELS; y++){
-      //一个循环就是一行
-      for (int x = 0; x < WIDTH_PIXELS ; x++)
-      {
-          if (y < HEIGHT_PIXELS)
-          {
-              uint16_t y_offset = address-1;
-              uint16_t color = truetypeManager.getPixelColor(framebuffer, x, y);
+    uint16_t y_offset = address-1;
+    //一个循环就是一行
+    for (int x = 0; x < WIDTH_PIXELS ; x++)
+    {
+        if (y < HEIGHT_PIXELS)
+        {
+            uint16_t color = truetypeManager.getPixelColor(framebuffer, x, y);
+            //Serial.println("color:"+String(color));
+            if (x == 0)
+            {
+              //每一行开始
+              spriteTextManager.setRowAddress(top_offset, y_offset);
+              spriteTextManager.enableWriteColor();
+            }
+            //每一列，写入颜色
+            spriteTextManager.writeColor(color);
+            if (x == WIDTH_PIXELS - 1)
+            {   //每一行结束
+                spriteTextManager.disableWriteColor();
+            }
 
-              //Serial.println("color:"+String(color));
-              if (x == 0)
-              {
-                //每一行开始
-                //Serial.println("y_offset----->:"+String(y_offset));
-                //Serial.println("top_offset----->:"+String(top_offset));
-                spriteTextManager.setRowAddress(top_offset, y_offset);
-                spriteTextManager.enableWriteColor();
-              }
-              //每一列，写入颜色
-              spriteTextManager.writeColor(color);
-              if (x == WIDTH_PIXELS - 1)
-              {
-                  //每一行结束
-                  spriteTextManager.disableWriteColor();
-              }
-          }else if (y >= HEIGHT_PIXELS)
-          {
-              //一行结束，重新初始化
-              y = 0;
-              spriteTextManager.clearSprite();
-          }
-      }
-      vTaskDelay(5);
-      spriteTextManager.scrollStart(address);
-      address--;
-  }
-}
-
-
-
-void TaskFrontTypeHandle(void *pvParameters)
-{
-    frameBufMessage_t frameBufMessage;
-    while(1){
-        if (xQueueReceive(frameBufQueue, &frameBufMessage, portMAX_DELAY) == pdPASS) {
-            uint8_t index = frameBufMessage.buf_id;
-            uint8_t *framebuffer = frameBufMessage.buf_data;
-            handlerBufIndex = index;
-            handleTruetype(framebuffer);
+        }else if (y >= HEIGHT_PIXELS)
+        {
+            //一行结束，重新初始化
+            y = 0;
+            spriteTextManager.clearSprite();
         }
-       //vTaskDelay(pdMS_TO_TICKS(1000));
-        //delay(1000);
     }
+    spriteTextManager.scrollStart(address);
+    address--;
+
 }
 
-void TaskFrontTypeRead(void *pvParameters)
+
+
+void TaskTruetypeHandle(TimerHandle_t pxTimer)
+{
+    static uint16_t y = 0;
+    static uint8_t availableIndex = 0;
+    framebuffer_t *framebuffer_t = truetypeManager.getFramebuffer(availableIndex);
+    uint8_t *framebuffer = framebuffer_t->framebuffer;
+    if(!framebuffer_t->hadData){
+      return;
+    }
+    handleTruetype(framebuffer, y);
+    if(y>=HEIGHT_PIXELS){
+      y = 0;
+      truetypeManager.resetFramebuffer(availableIndex);
+      if(availableIndex == 0){
+        availableIndex = 1;
+      }else{
+        availableIndex = 0;
+      }
+    }
+    y++;
+}
+
+void TaskTruetypeRead(void *pvParameters)
 {
 
     TickType_t xLastWakeTime;
-    const TickType_t xFrequency = pdMS_TO_TICKS(20); // 1秒
+    const TickType_t xFrequency = pdMS_TO_TICKS(2); // 1秒
     // 获取当前时间（系统启动后的 tick 数）
     xLastWakeTime = xTaskGetTickCount();
     while(1){
-      //unsigned long startTime = micros();
-        if(uxQueueMessagesWaiting(frameBufQueue) < QUEUE_LENGTH-1){
-          if(handlerBufIndex == 1){
-            uint8_t* buf = truetypeManager.readTextToFramebuffer(0);
-            frameBufMessage_t  frameBufMessage;
-            frameBufMessage.buf_id = 0;
-            frameBufMessage.buf_data = buf;
-            xQueueSend(frameBufQueue, &frameBufMessage, portMAX_DELAY);
-            //delay(10000);
-          }else{
-            uint8_t* buf = truetypeManager.readTextToFramebuffer(1);
-            frameBufMessage_t  frameBufMessage;
-            frameBufMessage.buf_id = 1;
-            frameBufMessage.buf_data = buf;
-            xQueueSend(frameBufQueue, &frameBufMessage, portMAX_DELAY);
-          }
-        }
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-        
+      truetypeManager.readTextToFramebuffer();
+      vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
@@ -137,18 +115,27 @@ void setup()
     {
         delay(100);
     }
-  
-    frameBufQueue = xQueueCreate(QUEUE_LENGTH, sizeof(frameBufMessage_t)); 
-    //truetypeManager.checkFileExists(MY_TTF);
     initSprite();
 
     while(!truetypeManager.initTruetype(MY_TTF, nullptr)){
       Serial.println("initTruetype failed");
       delay(100);
     }
-    xTaskCreatePinnedToCore(TaskFrontTypeRead, "TaskFrontTypeRead", 8048, NULL, 1, NULL, 1); 
-    xTaskCreatePinnedToCore(TaskFrontTypeHandle, "TaskFrontTypeHandle", 8048, NULL, 1, NULL, 0); // 在核心0上运行
-    
+    xTaskCreatePinnedToCore(TaskTruetypeRead, "TaskTruetypeRead", 8048, NULL, 1, NULL, 1); 
+    //xTaskCreatePinnedToCore(TaskTruetypeHandle, "TaskTruetypeHandle", 8048, NULL, 1, NULL, 0); // 在核心0上运行
+    // 参数：名称，周期(以ticks为单位)，是否自动重载，参数，回调函数
+    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(5), pdTRUE, NULL, TaskTruetypeHandle);
+    if(xTimer == NULL) {
+      Serial.println("定时器创建失败！");
+    } else {
+      Serial.println("定时器创建成功！");
+    }
+  
+    if(xTimer != NULL) {
+      if(xTimerStart(xTimer, 0) != pdPASS) {
+        Serial.println("定时器启动失败！");
+      }
+    }
 }
 
 void loop()

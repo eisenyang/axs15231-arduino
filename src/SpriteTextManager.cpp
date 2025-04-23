@@ -96,6 +96,9 @@ void SpriteTextManager::drawRow2LCD(uint16_t y,uint16_t color){
 void SpriteTextManager::setRowAddress(uint16_t x_offset,uint16_t y){
     lcd_block_write(x_offset,y,LCD_WIDTH-1,y);
 }
+void SpriteTextManager::set2RowAddress(uint16_t x_offset,uint16_t y){
+    lcd_block_write(x_offset,y,LCD_WIDTH-1,y+1);
+}
 void SpriteTextManager::blockLcdWrite(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1){
     lcd_block_write(x0, y0, x1, y1);
 }

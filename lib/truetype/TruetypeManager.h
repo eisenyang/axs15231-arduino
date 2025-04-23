@@ -16,6 +16,7 @@
 #define FRAMEBUFFER_SIZE (WIDTH_BYTES * HEIGHT_PIXELS)
 #define BITS_PER_PIXEL 1 // either 1, 4, or 8
 #define DISPLAY_WIDTH (WIDTH_BYTES * (8 / BITS_PER_PIXEL))
+#define MAX_DRAW_STRINGS 250
 typedef struct Framebuffer{
   uint8_t *framebuffer;
   bool hadData;
@@ -31,6 +32,8 @@ class TruetypeManager{
     bool checkFileExists(const char *filename);
     framebuffer_t *getFramebuffer(uint8_t index);
     bool resetFramebuffer(uint8_t index);
+    void setDrawString(const String drawStrings[]);
+    void setDrawString(const char *drawString);
     //void setFramebuffer(uint8_t index, uint8_t *framebuffer);
     void freeFramebuffer(uint8_t index);
     void freeAllFramebuffer();
@@ -41,5 +44,8 @@ class TruetypeManager{
     // uint8_t _writeToDisplayIndex = -1;
     // uint8_t _framebufferNum = 0;
     // uint8_t _availableIndex = -1;
+    String _draw_strings[MAX_DRAW_STRINGS];
+    uint16_t _draw_strings_length = 0;
+    uint16_t _draw_string_index = 0;
     framebuffer_t _framebuffers[BUF_COUNT];
 };

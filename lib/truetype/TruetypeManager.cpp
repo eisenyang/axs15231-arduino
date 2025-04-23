@@ -99,14 +99,9 @@ bool TruetypeManager::checkFileExists(const char *filename)
 uint8_t *TruetypeManager::readTextToFramebuffer()
 {
   //static String draw_string[] = {"以", "无", "所", "得", "故", "，", "菩", "提", "萨", "埵", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "心", "无", "罣", "碍", "；", "无", "罣", "碍", "故", "，", "无", "有", "恐", "怖", "，", "远", "离", "颠", "倒", "梦", "想", "，", "究", "竟", "涅", "槃", "。", "三", "世", "诸", "佛", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "得", "阿", "耨", "多", "罗", "三", "藐", "三", "菩", "提", "。"};
-  static String draw_string[] = {"以", "无", "所", "得", "故","。"};
-  static uint16_t draw_string_len = sizeof(draw_string) / sizeof(draw_string[0]);
-  static uint16_t draw_string_index = 0;
-  String str = draw_string[draw_string_index];
-  // uint16_t unicode = getChineseUnicode(str);
-
+  String str = _draw_strings[_draw_string_index];
   unsigned long startTimeRead = millis();
-  uint8_t index = draw_string_index % 2;
+  uint8_t index = _draw_string_index % 2;
 
   framebuffer_t *framebuffer_t = &_framebuffers[index];
   bool hadData = framebuffer_t->hadData;
@@ -117,10 +112,10 @@ uint8_t *TruetypeManager::readTextToFramebuffer()
   memset(framebuffer, 0, FRAMEBUFFER_SIZE);
   _truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer);
   _truetype.textDraw(0, 0, str);
-  draw_string_index++;
-  if (draw_string_index >= draw_string_len)
+  _draw_string_index++;
+  if (_draw_string_index >= _draw_strings_length)
   {
-    draw_string_index = 0;
+    _draw_string_index = 0;
   }
   framebuffer_t->hadData = true;
   return framebuffer;
@@ -189,4 +184,91 @@ void TruetypeManager::freeAllFramebuffer()
   {
     freeFramebuffer(i);
   }
+}
+void TruetypeManager::setDrawString(const String drawStrings[])
+{
+  // Calculate the length by finding the first null element
+  uint16_t length = 0;
+  while (drawStrings[length].length() > 0 && length < MAX_DRAW_STRINGS) {
+    length++;
+  }
+  
+  // Copy the new strings
+  for (int i = 0; i < length; i++) {
+    _draw_strings[i] = drawStrings[i];
+  }
+  
+  // Update the length and reset the index
+  _draw_strings_length = length;
+  _draw_string_index = 0;
+  
+  Serial.print("Set new draw strings with length: ");
+  Serial.println(_draw_strings_length);
+}
+void TruetypeManager::setDrawString(const char *drawString) {
+  if (drawString == nullptr || strlen(drawString) == 0) {
+    Serial.println("Error: Empty string provided");
+    return;
+  }
+  
+  uint16_t length = 0;
+  uint16_t i = 0;
+  uint16_t byteIndex = 0;
+  
+  // 清空之前的字符串数组
+  for (int j = 0; j < _draw_strings_length; j++) {
+    _draw_strings[j] = "";
+  }
+  
+  // 分割字符串，正确处理UTF-8编码字符
+  while (drawString[byteIndex] != '\0' && length < MAX_DRAW_STRINGS) {
+    char currentByte = drawString[byteIndex];
+    String character = "";
+    
+    if ((currentByte & 0x80) == 0) {
+      // ASCII字符 (1字节)
+      character = String(drawString[byteIndex]);
+      byteIndex += 1;
+    } else if ((currentByte & 0xE0) == 0xC0) {
+      // 2字节UTF-8字符
+      if (drawString[byteIndex + 1] != '\0') {
+        character = String(drawString + byteIndex).substring(0, 2);
+        byteIndex += 2;
+      } else {
+        break; // 字符串末尾，不完整字符
+      }
+    } else if ((currentByte & 0xF0) == 0xE0) {
+      // 3字节UTF-8字符 (中文等)
+      if (drawString[byteIndex + 1] != '\0' && drawString[byteIndex + 2] != '\0') {
+        character = String(drawString + byteIndex).substring(0, 3);
+        byteIndex += 3;
+      } else {
+        break; // 字符串末尾，不完整字符
+      }
+    } else if ((currentByte & 0xF8) == 0xF0) {
+      // 4字节UTF-8字符 (表情符号等)
+      if (drawString[byteIndex + 1] != '\0' && drawString[byteIndex + 2] != '\0' && drawString[byteIndex + 3] != '\0') {
+        character = String(drawString + byteIndex).substring(0, 4);
+        byteIndex += 4;
+      } else {
+        break; // 字符串末尾，不完整字符
+      }
+    } else {
+      // 无效UTF-8序列，跳过
+      byteIndex++;
+      continue;
+    }
+    
+    if (character.length() > 0) {
+      _draw_strings[length] = character;
+      length++;
+    }
+  }
+  
+  // 更新长度和重置索引
+  _draw_strings_length = length;
+  _draw_string_index = 0;
+  
+  Serial.print("Set new draw strings with length: ");
+  Serial.println(_draw_strings_length);
 }

@@ -75,7 +75,7 @@ void TaskTruetypeHandle(TimerHandle_t pxTimer)
   static uint8_t availableIndex = 0;
   framebuffer_t *framebuffer_t = truetypeManager.getFramebuffer(availableIndex);
   uint8_t *framebuffer = framebuffer_t->framebuffer;
-  if (!framebuffer_t->hadData)
+  if (!framebuffer_t->hasData)
   {
     return;
   }
@@ -124,7 +124,7 @@ void setup()
     Serial.println("initTruetype failed");
     delay(100);
   }
-  String draw_strings[] = {"可以", "无", "所", "得", "故", "。"};
+  String draw_strings[] = {"以", "无", "所", "得", "故", "。"};
   const char *draw_string = "你好美丽的中国！";
   truetypeManager.setDrawString(draw_string);
   xTaskCreatePinnedToCore(TaskTruetypeRead, "TaskTruetypeRead", 8048, NULL, 1, NULL, 1);

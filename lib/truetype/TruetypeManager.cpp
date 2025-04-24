@@ -13,7 +13,7 @@ TruetypeManager::TruetypeManager()
   for (int i = 0; i < BUF_COUNT; i++)
   {
     _framebuffers[i].framebuffer = (uint8_t *)calloc(sizeof(uint8_t), FRAMEBUFFER_SIZE);
-    _framebuffers[i].hadData = false;
+    _framebuffers[i].hasData = false;
     if (!_framebuffers[i].framebuffer)
     {
       Serial.println("alloc memory failed !!!");
@@ -37,15 +37,10 @@ framebuffer_t *TruetypeManager::getFramebuffer(uint8_t index)
 
 bool TruetypeManager::resetFramebuffer(uint8_t index)
 {
-  _framebuffers[index].hadData = false;
+  _framebuffers[index].hasData = false;
   memset(_framebuffers[index].framebuffer, 0, FRAMEBUFFER_SIZE);
   return true;
 }
-// void TruetypeManager::setFramebuffer(uint8_t index, uint8_t *framebuffer)
-// {
-//   _framebuffers[index].framebuffer = framebuffer;
-// }
-
 bool TruetypeManager::initTruetype(const String &path, truetypeClass *truetype)
 {
   LittleFS.begin();
@@ -91,11 +86,6 @@ bool TruetypeManager::checkFileExists(const char *filename)
   }
 }
 
-// void setDrawString(String *drawString){
-//   //static String draw_string[] = {"以", "无", "所", "得", "故","。"};
-//   static uint16_t draw_string_len = sizeof(drawString) / sizeof(draw_string[0]);
-//   static uint16_t draw_string_index = 0;
-// }
 uint8_t *TruetypeManager::readTextToFramebuffer()
 {
   //static String draw_string[] = {"以", "无", "所", "得", "故", "，", "菩", "提", "萨", "埵", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "心", "无", "罣", "碍", "；", "无", "罣", "碍", "故", "，", "无", "有", "恐", "怖", "，", "远", "离", "颠", "倒", "梦", "想", "，", "究", "竟", "涅", "槃", "。", "三", "世", "诸", "佛", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "得", "阿", "耨", "多", "罗", "三", "藐", "三", "菩", "提", "。"};
@@ -104,8 +94,8 @@ uint8_t *TruetypeManager::readTextToFramebuffer()
   uint8_t index = _draw_string_index % 2;
 
   framebuffer_t *framebuffer_t = &_framebuffers[index];
-  bool hadData = framebuffer_t->hadData;
-  if(hadData){
+  bool hasData = framebuffer_t->hasData;
+  if(hasData){
     return nullptr;
   }
   uint8_t *framebuffer = framebuffer_t->framebuffer;
@@ -117,7 +107,7 @@ uint8_t *TruetypeManager::readTextToFramebuffer()
   {
     _draw_string_index = 0;
   }
-  framebuffer_t->hadData = true;
+  framebuffer_t->hasData = true;
   return framebuffer;
 }
 
@@ -175,7 +165,7 @@ void TruetypeManager::freeFramebuffer(uint8_t index)
   {
     free(_framebuffers[index].framebuffer);
     _framebuffers[index].framebuffer = nullptr;
-    _framebuffers[index].hadData = false;
+    _framebuffers[index].hasData = false;
   }
 }
 void TruetypeManager::freeAllFramebuffer()

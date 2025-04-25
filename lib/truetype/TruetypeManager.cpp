@@ -41,6 +41,11 @@ bool TruetypeManager::resetFramebuffer(uint8_t index)
   memset(_framebuffers[index].framebuffer, 0, FRAMEBUFFER_SIZE);
   return true;
 }
+// void TruetypeManager::setFramebuffer(uint8_t index, uint8_t *framebuffer)
+// {
+//   _framebuffers[index].framebuffer = framebuffer;
+// }
+
 bool TruetypeManager::initTruetype(const String &path, truetypeClass *truetype)
 {
   LittleFS.begin();
@@ -89,13 +94,14 @@ bool TruetypeManager::checkFileExists(const char *filename)
 uint8_t *TruetypeManager::readTextToFramebuffer()
 {
   //static String draw_string[] = {"以", "无", "所", "得", "故", "，", "菩", "提", "萨", "埵", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "心", "无", "罣", "碍", "；", "无", "罣", "碍", "故", "，", "无", "有", "恐", "怖", "，", "远", "离", "颠", "倒", "梦", "想", "，", "究", "竟", "涅", "槃", "。", "三", "世", "诸", "佛", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "得", "阿", "耨", "多", "罗", "三", "藐", "三", "菩", "提", "。"};
-  String str = _draw_strings[_draw_string_index];
-  unsigned long startTimeRead = millis();
-  uint8_t index = _draw_string_index % 2;
-
+  
+  unsigned long startTime = micros();
+  String str = _draw_strings[_draw_string_index];  
+  uint8_t index = _framebuffer_index;
   framebuffer_t *framebuffer_t = &_framebuffers[index];
   bool hasData = framebuffer_t->hasData;
   if(hasData){
+    //vTaskDelay();
     return nullptr;
   }
   uint8_t *framebuffer = framebuffer_t->framebuffer;
@@ -107,25 +113,323 @@ uint8_t *TruetypeManager::readTextToFramebuffer()
   {
     _draw_string_index = 0;
   }
+  if(_framebuffer_index == 0){
+    _framebuffer_index = 1;
+  }
+  else{
+    _framebuffer_index = 0;
+  }
   framebuffer_t->hasData = true;
   return framebuffer;
 }
-
 uint16_t TruetypeManager::getPixelColor(uint8_t *framebuffer, uint16_t x, uint16_t y)
 {
-  // return _framebuffer[bufIndex][y * DISPLAY_WIDTH + x];
-
-  uint16_t byte_index = x * WIDTH_BYTES + (y / 8);
-  uint8_t bit_position = 7 - (y % 8); // 从高位到低位
-  uint8_t bit_mask = _BV(bit_position);
-  if (framebuffer[byte_index] & bit_mask)
-  {
-    return TFT_WHITE;
-  }
-  else
-  {
-    return TFT_BLACK;
-  }
+    // 检查是否使用抗锯齿或原始二值模式
+    #define USE_ANTIALIASING 1
+    
+    #if USE_ANTIALIASING
+        // 检查边界以避免访问越界内存
+        if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) {
+            return TFT_BLACK;
+        }
+        
+        // 原始像素值
+        uint16_t byte_index = x * WIDTH_BYTES + (y / 8);
+        uint8_t bit_position = 7 - (y % 8); // 从高位到低位
+        uint8_t bit_mask = _BV(bit_position);
+        bool center_pixel = framebuffer[byte_index] & bit_mask;
+        
+        // 预先检查周围像素，判断是否位于边缘
+        bool edge_detected = false;
+        bool has_white = center_pixel;
+        bool has_black = !center_pixel;
+        
+        // 首先检查临近像素以检测边缘
+        for (int8_t dy = -1; dy <= 1 && !edge_detected; dy++) {
+            for (int8_t dx = -1; dx <= 1 && !edge_detected; dx++) {
+                if (dx == 0 && dy == 0) continue; // 跳过中心
+                
+                int16_t nx = x + dx;
+                int16_t ny = y + dy;
+                
+                if (nx >= 0 && nx < DISPLAY_WIDTH && ny >= 0 && ny < DISPLAY_HEIGHT) {
+                    byte_index = nx * WIDTH_BYTES + (ny / 8);
+                    bit_position = 7 - (ny % 8);
+                    bit_mask = _BV(bit_position);
+                    bool neighbor_pixel = framebuffer[byte_index] & bit_mask;
+                    
+                    // 如果找到不同颜色的像素，说明我们在边缘
+                    has_white |= neighbor_pixel;
+                    has_black |= !neighbor_pixel;
+                    
+                    // 同时有黑色和白色像素时，检测到边缘
+                    edge_detected = has_white && has_black;
+                }
+            }
+        }
+        
+        // 如果不在边缘，对中心区域使用二值渲染
+        if (!edge_detected) {
+            return center_pixel ? TFT_WHITE : TFT_BLACK;
+        }
+        
+        // 对边缘应用增强的抗锯齿
+        const uint8_t SAMPLE_RADIUS = 2; // 在边缘使用更大的采样半径
+        int16_t weighted_sum = 0;
+        int16_t total_weight = 0;
+        
+        // 中心像素对最终颜色贡献更多
+        if (center_pixel) {
+            weighted_sum += 16; // 中心像素权重更高
+            total_weight += 16;
+        } else {
+            total_weight += 16; // 仍然将中心计入分母
+        }
+        
+        // 在更大的半径内采样边缘
+        for (int8_t dy = -SAMPLE_RADIUS; dy <= SAMPLE_RADIUS; dy++) {
+            for (int8_t dx = -SAMPLE_RADIUS; dx <= SAMPLE_RADIUS; dx++) {
+                // 跳过中心像素，因为已经处理过
+                if (dx == 0 && dy == 0) continue;
+                
+                int16_t nx = x + dx;
+                int16_t ny = y + dy;
+                
+                // 检查邻域像素是否在边界内
+                if (nx >= 0 && nx < DISPLAY_WIDTH && ny >= 0 && ny < DISPLAY_HEIGHT) {
+                    // 基于距离和位置的权重计算
+                    // 更近的像素权重更大，对角线像素权重更小
+                    int16_t dist_squared = dx*dx + dy*dy;
+                    uint8_t weight;
+                    
+                    // 基于距离分配权重
+                    if (dist_squared <= 1) {
+                        weight = 8; // 直接相邻（上下左右）
+                    } else if (dist_squared <= 2) {
+                        weight = 6; // 对角线邻居
+                    } else if (dist_squared <= 4) {
+                        weight = 4; // 稍远一些
+                    } else {
+                        weight = 2; // 半径内最远的像素
+                    }
+                    
+                    byte_index = nx * WIDTH_BYTES + (ny / 8);
+                    bit_position = 7 - (ny % 8);
+                    bit_mask = _BV(bit_position);
+                    
+                    if (framebuffer[byte_index] & bit_mask) {
+                        weighted_sum += weight;
+                    }
+                    
+                    total_weight += weight;
+                }
+            }
+        }
+        
+        // 计算抗锯齿灰度级别（0-255）
+        uint16_t gray_level = (weighted_sum * 255) / total_weight;
+        
+        // S曲线对比度增强，更明显的抗锯齿
+        // 这使得边缘过渡更平滑
+        if (gray_level < 128) {
+            // 较暗像素：应用曲线使渐变更明显
+            gray_level = ((gray_level * gray_level) >> 7);
+        } else {
+            // 较亮像素：应用反曲线
+            uint16_t inv = 255 - gray_level;
+            inv = ((inv * inv) >> 7);
+            gray_level = 255 - inv;
+        }
+        
+        // 基于原始像素是黑色还是白色进一步增强对比度
+        if (center_pixel) {
+            // 如果中心是白色，偏向白色
+            gray_level = 192 + (gray_level >> 2);
+        } else {
+            // 如果中心是黑色，仅当周围有强白色邻居时才变亮
+            if (gray_level < 64) {
+                gray_level = gray_level >> 1; // 使其更暗
+            }
+        }
+        
+        // 确保范围在0-255
+        if (gray_level > 255) gray_level = 255;
+        
+        // 转换为RGB565格式 - 返回灰度值
+        uint16_t r = gray_level >> 3;  // 红色5位
+        uint16_t g = gray_level >> 2;  // 绿色6位
+        uint16_t b = gray_level >> 3;  // 蓝色5位
+        
+        return (r << 11) | (g << 5) | b;
+    #else
+        // 原始二值实现
+        uint16_t byte_index = x * WIDTH_BYTES + (y / 8);
+        uint8_t bit_position = 7 - (y % 8); // 从高位到低位
+        uint8_t bit_mask = _BV(bit_position);
+        if (framebuffer[byte_index] & bit_mask)
+        {
+            return TFT_RED;
+        }
+        else
+        {
+            return TFT_BLACK;
+        }
+    #endif
+}
+uint16_t getPixelColor1(uint8_t *framebuffer, uint16_t x, uint16_t y)
+{
+  // Check if we're using anti-aliasing or original binary mode
+  #define USE_ANTIALIASING 1
+  
+  #if USE_ANTIALIASING
+    // Check boundaries to avoid accessing out of bounds memory
+    if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) {
+      return TFT_BLACK;
+    }
+    
+    // Original pixel value
+    uint16_t byte_index = x * WIDTH_BYTES + (y / 8);
+    uint8_t bit_position = 7 - (y % 8); // 从高位到低位
+    uint8_t bit_mask = _BV(bit_position);
+    bool center_pixel = framebuffer[byte_index] & bit_mask;
+    
+    // Pre-calculate surrounding pixels to determine if we're near an edge
+    // This helps us decide whether to apply anti-aliasing
+    bool edge_detected = false;
+    bool has_white = center_pixel;
+    bool has_black = !center_pixel;
+    
+    // Check immediate neighbors first to detect edges
+    for (int8_t dy = -1; dy <= 1 && !edge_detected; dy++) {
+      for (int8_t dx = -1; dx <= 1 && !edge_detected; dx++) {
+        if (dx == 0 && dy == 0) continue; // Skip center
+        
+        int16_t nx = x + dx;
+        int16_t ny = y + dy;
+        
+        if (nx >= 0 && nx < DISPLAY_WIDTH && ny >= 0 && ny < DISPLAY_HEIGHT) {
+          byte_index = nx * WIDTH_BYTES + (ny / 8);
+          bit_position = 7 - (ny % 8);
+          bit_mask = _BV(bit_position);
+          bool neighbor_pixel = framebuffer[byte_index] & bit_mask;
+          
+          // If we find different colored pixels, we're at an edge
+          has_white |= neighbor_pixel;
+          has_black |= !neighbor_pixel;
+          
+          // Edge detected when we have both white and black pixels
+          edge_detected = has_white && has_black;
+        }
+      }
+    }
+    
+    // If we're not at an edge, use binary rendering for center areas
+    if (!edge_detected) {
+      return center_pixel ? TFT_WHITE : TFT_BLACK;
+    }
+    
+    // For edges, apply enhanced anti-aliasing
+    const uint8_t SAMPLE_RADIUS = 2; // Larger sample radius at edges for better smoothing
+    int16_t weighted_sum = 0;
+    int16_t total_weight = 0;
+    
+    // Center pixel contributes more to the final color
+    if (center_pixel) {
+      weighted_sum += 16; // Higher weight for center
+      total_weight += 16;
+    } else {
+      total_weight += 16; // Still count center in denominator
+    }
+    
+    // Sample in the larger radius for edges
+    for (int8_t dy = -SAMPLE_RADIUS; dy <= SAMPLE_RADIUS; dy++) {
+      for (int8_t dx = -SAMPLE_RADIUS; dx <= SAMPLE_RADIUS; dx++) {
+        // Skip the center pixel as we already processed it
+        if (dx == 0 && dy == 0) continue;
+        
+        int16_t nx = x + dx;
+        int16_t ny = y + dy;
+        
+        // Check if the neighboring pixel is within bounds
+        if (nx >= 0 && nx < DISPLAY_WIDTH && ny >= 0 && ny < DISPLAY_HEIGHT) {
+          // Weight calculation based on distance and position
+          // Closer pixels have more weight, diagonal pixels less
+          int16_t dist_squared = dx*dx + dy*dy;
+          uint8_t weight;
+          
+          // Assign weights based on distance
+          if (dist_squared <= 1) {
+            weight = 8; // Directly adjacent (up, down, left, right)
+          } else if (dist_squared <= 2) {
+            weight = 6; // Diagonal neighbors
+          } else if (dist_squared <= 4) {
+            weight = 4; // Slightly further
+          } else {
+            weight = 2; // Furthest pixels within radius
+          }
+          
+          byte_index = nx * WIDTH_BYTES + (ny / 8);
+          bit_position = 7 - (ny % 8);
+          bit_mask = _BV(bit_position);
+          
+          if (framebuffer[byte_index] & bit_mask) {
+            weighted_sum += weight;
+          }
+          
+          total_weight += weight;
+        }
+      }
+    }
+    
+    // Calculate anti-aliased gray level (0-255)
+    uint16_t gray_level = (weighted_sum * 255) / total_weight;
+    
+    // S-curve contrast enhancement for more pronounced anti-aliasing
+    // This makes transitions more gradual at edges
+    if (gray_level < 128) {
+      // Darker pixels: apply curve to make gradient more visible
+      gray_level = ((gray_level * gray_level) >> 7);
+    } else {
+      // Lighter pixels: apply inverse curve
+      uint16_t inv = 255 - gray_level;
+      inv = ((inv * inv) >> 7);
+      gray_level = 255 - inv;
+    }
+    
+    // Further enhance contrast based on whether the original pixel was white or black
+    if (center_pixel) {
+      // If center was white, bias toward white
+      gray_level = 192 + (gray_level >> 2);
+    } else {
+      // If center was black, only brighten if we have strong white neighbors
+      if (gray_level < 64) {
+        gray_level = gray_level >> 1; // Make darker
+      }
+    }
+    
+    // Ensure we stay in range
+    if (gray_level > 255) gray_level = 255;
+    
+    // Convert to RGB565 format
+    uint16_t r = gray_level >> 3;  // 5 bits for red
+    uint16_t g = gray_level >> 2;  // 6 bits for green
+    uint16_t b = gray_level >> 3;  // 5 bits for blue
+    
+    return (r << 11) | (g << 5) | b;
+  #else
+    // Original binary implementation
+    uint16_t byte_index = x * WIDTH_BYTES + (y / 8);
+    uint8_t bit_position = 7 - (y % 8); // 从高位到低位
+    uint8_t bit_mask = _BV(bit_position);
+    if (framebuffer[byte_index] & bit_mask)
+    {
+      return TFT_WHITE;
+    }
+    else
+    {
+      return TFT_BLACK;
+    }
+  #endif
 }
 
 // 获取单个汉字的Unicode十六进制值

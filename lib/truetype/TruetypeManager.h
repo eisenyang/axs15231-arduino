@@ -34,12 +34,19 @@ class TruetypeManager{
     bool resetFramebuffer(uint8_t index);
     void setDrawString(const String drawStrings[]);
     void setDrawString(const char *drawString);
+    //void setFramebuffer(uint8_t index, uint8_t *framebuffer);
     void freeFramebuffer(uint8_t index);
     void freeAllFramebuffer();
   private:
     truetypeClass _truetype = truetypeClass();
+    //uint8_t *_framebuffer[BUF_COUNT];
+    // uint8_t _readFromTtfIndex = -1;
+    // uint8_t _writeToDisplayIndex = -1;
+    // uint8_t _framebufferNum = 0;
+    // uint8_t _availableIndex = -1;
     String _draw_strings[MAX_DRAW_STRINGS];
     uint16_t _draw_strings_length = 0;
     uint16_t _draw_string_index = 0;
+    uint8_t _framebuffer_index = 0;
     framebuffer_t _framebuffers[BUF_COUNT];
 };

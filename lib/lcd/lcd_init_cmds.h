@@ -43,9 +43,10 @@ void lcd_init_cmds()
     lcd_write_data(0x19); // 1
     lcd_write_data(0x60); // 2
     lcd_write_data(0x64); // 3
-    lcd_write_data(0x9b); // 4
+    lcd_write_data(0x9b); // 4-9b
     lcd_write_data(0x22); // 5
-    lcd_write_data(0x50); // 6
+    lcd_write_data(0x00); // 6-50
+    
     lcd_write_data(0x80); // 7
     lcd_write_data(0xAC); // 8
     lcd_write_data(0x28); // 9
@@ -580,6 +581,10 @@ void lcd_init_cmds()
     lcd_write_data(0x00); // 5
     lcd_write_data(0x00); // 6
     lcd_write_data(0x00); // 7
+
+
+    lcd_write_cmd(0x35);
+    lcd_write_data(0x01); // 0-model1，2-model2
 
     lcd_write_cmd(0x11);
     lcd_write_data(0x00);

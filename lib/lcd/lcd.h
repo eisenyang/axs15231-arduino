@@ -11,7 +11,7 @@
 #define PIN_NUM_DC 15
 #define PIN_NUM_RST 13
 #define PIN_NUM_BCKL (-1)
-
+#define PIN_NUM_TE 10
 #define LCD_WIDTH 172
 #define LCD_HEIGHT 640
 

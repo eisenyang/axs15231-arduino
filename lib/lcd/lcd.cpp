@@ -12,7 +12,6 @@
 #define LCD_RST_L digitalWrite(PIN_NUM_RST, LOW)
 
 static SPIClass *lcd_spi = NULL;
-
 static void lcd_reset()
 {
     LCD_RST_H;
@@ -28,6 +27,8 @@ void lcd_init()
     pinMode(PIN_NUM_RST, OUTPUT);
     pinMode(PIN_NUM_CS, OUTPUT);
     pinMode(PIN_NUM_DC, OUTPUT);
+    pinMode(PIN_NUM_TE, INPUT_PULLUP);
+    
     LCD_CS_H;
     LCD_DC_H;
 

@@ -45,7 +45,7 @@ void lcd_init_cmds()
     lcd_write_data(0x64); // 3
     lcd_write_data(0x9b); // 4-9b
     lcd_write_data(0x22); // 5
-    lcd_write_data(0x00); // 6-50
+    lcd_write_data(0x50); // 6-50
     
     lcd_write_data(0x80); // 7
     lcd_write_data(0xAC); // 8

@@ -1,6 +1,6 @@
 // LcdSpriteManager.cp
 #include "LcdSpriteManager.h"
-#include "lcd.h"
+#include "lcd_arduino_spi.h"
 // 构造函数
 LcdSpriteManager::LcdSpriteManager() {
     tft = new TFT_eSPI();
@@ -15,7 +15,7 @@ LcdSpriteManager::~LcdSpriteManager() {
         delete sprite;
     }
     delete tft;
-    lcd_uninit();
+    lcd_arduino_spi_uninit();
 }
 
 // 初始化显示屏
@@ -25,7 +25,7 @@ void LcdSpriteManager::init() {
     
     // 初始化时就创建一个全屏的sprite
     //createSprite(tft->width(), tft->height());
-    lcd_init();
+    lcd_arduino_spi_init();
     createSprite(LCD_WIDTH, LCD_HEIGHT);
     //sprite->setRotation(1);
 }
@@ -71,7 +71,7 @@ void LcdSpriteManager::fillScreen(uint32_t color) {
     if (sprite != nullptr) {
         sprite->fillSprite(color);
         //pushSprite(0, 0); // 立即推送到屏幕
-        lcd_clear_screen(color);
+        lcd_arduino_spi_clear_screen(color);
     }
 }
 
@@ -397,11 +397,11 @@ void LcdSpriteManager::setColorDepth(int8_t bits) {
 void LcdSpriteManager::update() {
     if (sprite != nullptr) {
         //pushSprite(0, 0);
-        lcd_block_write(0, 0, LCD_WIDTH-1, LCD_HEIGHT-1);
+        lcd_arduino_spi_block_write(0, 0, LCD_WIDTH-1, LCD_HEIGHT-1);
         for (int16_t y = 0; y < LCD_HEIGHT; y++) {
             for (int16_t x = 0; x < LCD_WIDTH; x++) {
                 uint16_t color = sprite->readPixel(x, y);
-                lcd_write_color(color);
+                lcd_arduino_spi_write_color(color);
             }
         }
 
@@ -411,11 +411,11 @@ void LcdSpriteManager::update() {
 void LcdSpriteManager::update(int16_t x1,int16_t y1,int16_t x2,int16_t y2) {
     if (sprite != nullptr) {
         //pushSprite(0, 0);
-        lcd_block_write(x1, y1, x2, y2);
+        lcd_arduino_spi_block_write(x1, y1, x2, y2);
         for (int16_t y = y1; y <= y2; y++) {
             for (int16_t x = x1; x <= x2; x++) {
                 uint16_t color = sprite->readPixel(x, y);
-                lcd_write_color(color);
+                lcd_arduino_spi_write_color(color);
             }
         }
     }
@@ -644,19 +644,19 @@ TextBounds LcdSpriteManager::getTextBounds(const String &text, int32_t x, int32_
 }
 
 void LcdSpriteManager::set_scroll_window(int16_t top_fixed,int16_t scroll_content,int16_t bottom_fixed) {
-    lcd_set_scroll_window(top_fixed, scroll_content, bottom_fixed);
+    lcd_arduino_spi_set_scroll_window(top_fixed, scroll_content, bottom_fixed);
 }
 
 void LcdSpriteManager::scroll_start(int16_t address) {
-    lcd_scroll_start(address);
+    lcd_arduino_spi_scroll_start(address);
 }
 
 void LcdSpriteManager::draw_rectangle(int16_t x,int16_t y,int16_t w,int16_t h,uint16_t front_color,uint16_t back_color) {
-    lcd_test_draw_frame(x, y, x + w, y + h, front_color, back_color);
+    //lcd_arduino_spi_draw_frame(x, y, x + w, y + h, front_color, back_color);
 }
 
 void LcdSpriteManager::draw_pixel(int16_t x,int16_t y,uint16_t color) {
-    lcd_draw_pixel(x, y, color);
+    lcd_arduino_spi_draw_pixel(x, y, color);
 }
 
 void LcdSpriteManager::draw_centered_box(int16_t w,int16_t h,uint16_t color) {

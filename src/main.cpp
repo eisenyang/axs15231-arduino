@@ -4,7 +4,7 @@
 #include <freertos/task.h>
 #include <TFT_eSPI.h>
 #include "SpriteTextManager.h"
-#include "lcd.h"
+#include "lcd_arduino_spi.h"
 #include <TFT_eSPI.h>
 #include "TruetypeManager.h"
 #define MY_TTF "/AlibabaPuHuiTi-3-35-Thin.ttf"

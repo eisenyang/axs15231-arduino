@@ -1,5 +1,5 @@
 #include "SpriteTextManager.h"
-#include "lcd.h"   
+#include "lcd_arduino_spi.h"
 SpriteTextManager::SpriteTextManager(){
     tft = new TFT_eSPI();
 }
@@ -12,7 +12,7 @@ void SpriteTextManager::init(uint16_t width, uint16_t height){
     //tft->init();
     //tft->setRotation(0);
     //tft->fillScreen(TFT_BLACK);
-    lcd_init();
+    lcd_arduino_spi_init();
     createSprite(width, height,16);
 }
 void SpriteTextManager::init(){
@@ -43,7 +43,7 @@ void SpriteTextManager::fillScreen(uint16_t color){
     if (sprite != nullptr) {
         sprite->fillScreen(color);
     }
-    lcd_clear_screen(color);
+    lcd_arduino_spi_clear_screen(color);
 }
 
 void SpriteTextManager::loadFont(const uint8_t *font_data){
@@ -76,32 +76,32 @@ void SpriteTextManager::drawCenterString(const String &string){
 
 void SpriteTextManager::setScrollWindow(int16_t top_fixed,int16_t scroll_content,int16_t bottom_fixed){
     if (sprite != nullptr) {
-        lcd_set_scroll_window(top_fixed, scroll_content, bottom_fixed); 
+        lcd_arduino_spi_set_scroll_window(top_fixed, scroll_content, bottom_fixed); 
     }
 }
 
 void SpriteTextManager::scrollStart(int16_t address){
     if (sprite != nullptr) {
-        lcd_scroll_start(address);
+        lcd_arduino_spi_scroll_start(address);
     }
 }
 
 void SpriteTextManager::drawPixel2LCD(int16_t x,int16_t y,uint16_t color){
-    lcd_block_write(x, y, x, y);
-    lcd_write_color(color);
+    lcd_arduino_spi_block_write(x, y, x, y);
+    lcd_arduino_spi_write_color(color);
 }
 void SpriteTextManager::drawRow2LCD(uint16_t y,uint16_t color){
-    lcd_draw_row(y, color);
+    lcd_arduino_spi_draw_row(y, color);
 }
 void SpriteTextManager::setRowAddress(uint16_t x_offset,uint16_t y){
-    lcd_block_write(x_offset,y,LCD_WIDTH-1,y);
+    lcd_arduino_spi_block_write(x_offset,y,LCD_WIDTH-1,y);
 }
 void SpriteTextManager::setRowAddress(uint16_t x_offset,uint16_t y,uint16_t row){
-    lcd_block_write(x_offset,y,LCD_WIDTH-1,y+row-1);
+    lcd_arduino_spi_block_write(x_offset,y,LCD_WIDTH-1,y+row-1);
    // Serial.println("申请屏显地址:"+String(x_offset)+","+String(y)+","+String(row)+","+String(y+row-1));
 }
 void SpriteTextManager::blockLcdWrite(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1){
-    lcd_block_write(x0, y0, x1, y1);
+    lcd_arduino_spi_block_write(x0, y0, x1, y1);
 }
 uint16_t SpriteTextManager::getPixel(int16_t x,int16_t y){
     if (sprite != nullptr) {
@@ -117,13 +117,13 @@ void SpriteTextManager::clearSprite(){
 }
 
 void SpriteTextManager::enableWriteColor(){
-    lcd_start_write_color();
+    lcd_arduino_spi_start_write_color();
 }
 void SpriteTextManager::disableWriteColor(){
-    lcd_end_write_color();
+    lcd_arduino_spi_end_write_color();
 }
 void SpriteTextManager::writeColor(uint16_t color){   
-    lcd_continue_write_color(color);
+    lcd_arduino_spi_continue_write_color(color);
 }
 
 void SpriteTextManager::setPixel(int16_t x,int16_t y,uint16_t color){

@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
-#include "lcd.h"
+#include "lcd_spi_common.h"
 
 #define SPRITE_WIDTH 160
 #define SPRITE_HEIGHT 160

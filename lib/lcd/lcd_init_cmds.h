@@ -217,6 +217,9 @@ void lcd_init_cmds()
     lcd_write_data(0x44); // 27
     lcd_write_data(0x50); // 28
 
+
+
+
     lcd_write_cmd(0xC5);
     lcd_write_data(0x18); // 0
     lcd_write_data(0x00); // 1
@@ -226,9 +229,9 @@ void lcd_init_cmds()
     lcd_write_data(0x08); // 5
     lcd_write_data(0x68); // 6
     lcd_write_data(0x30); // 7
-    lcd_write_data(0x10); // 8
-    lcd_write_data(0x10); // 9
-    lcd_write_data(0x88); // 10
+    lcd_write_data(0x00); // 8-10
+    lcd_write_data(0x48); // 9-05
+    lcd_write_data(0x89); // 10
     lcd_write_data(0xDE); // 11
     lcd_write_data(0x0D); // 12
     lcd_write_data(0x08); // 13
@@ -240,7 +243,7 @@ void lcd_init_cmds()
     lcd_write_data(0x30); // 19
     lcd_write_data(0x10); // 20
     lcd_write_data(0x10); // 21
-    lcd_write_data(0x00); // 22
+    lcd_write_data(0x08); // 22 00-08
 
     lcd_write_cmd(0xC6);
     lcd_write_data(0x05); // 0
@@ -583,8 +586,10 @@ void lcd_init_cmds()
     lcd_write_data(0x00); // 7
 
 
+    //lcd_write_cmd(0x34);
     lcd_write_cmd(0x35);
     lcd_write_data(0x01); // 0-model1，2-model2
+    delay(200);
 
     lcd_write_cmd(0x11);
     lcd_write_data(0x00);
@@ -593,4 +598,5 @@ void lcd_init_cmds()
     lcd_write_cmd(0x29);
     lcd_write_data(0x00);
     delay(100);
+
 }

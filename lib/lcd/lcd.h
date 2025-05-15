@@ -15,7 +15,7 @@
 #define LCD_WIDTH 172
 #define LCD_HEIGHT 640
 
-#define SPI_FREQUENCY 32 * 1000 * 1000
+#define SPI_FREQUENCY 24 * 1000 * 1000
 
 // Colors
 #define WHITE 0xFFFF

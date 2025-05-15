@@ -65,8 +65,11 @@ void srcoll_screen(){
     if(address <= 0){
       address = LCD_HEIGHT;
     }
+    ulong startTime = micros();
     spriteTextManager.scrollStart(address);
     address = address - SCROLL_ROW;
+    ulong currentTime = micros();
+    //Serial.printf("scrollStart运行时间:%f\n",(currentTime-startTime)/1000.0);
 
     if (scroll_info.y_scroll_offset >= HEIGHT_PIXELS)
     {
@@ -196,7 +199,7 @@ void TaskReadBuf2Screen(TimerHandle_t pxTimer)
     // }
     // y_scroll_offset++;
     ulong currentTime = micros();
-    //Serial.printf("run micros:%f\n",(currentTime-startTime)/1000.0);
+    //Serial.printf("readBuf2Screen运行时间:%f\n",(currentTime-startTime)/1000.0);
     scroll_info.readCompleted = true;
     xSemaphoreGive(xMutex);
   }

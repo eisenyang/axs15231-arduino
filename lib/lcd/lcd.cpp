@@ -176,7 +176,7 @@ void lcd_block_write_row(uint16_t y){
     lcd_block_write(0, y, LCD_WIDTH - 1, y);
 }
 void lcd_draw_pixel(uint16_t x, uint16_t y, uint16_t color) {
-    //lcd_block_write(x, y, x, y);
+    lcd_block_write(x, y, x, y);
     lcd_write_color(color);
 }
 

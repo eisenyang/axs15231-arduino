@@ -419,12 +419,6 @@ void lcd_spi_block_write(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
     lcd_spi_write_data(y1 & 0xff);
     lcd_spi_write_data(y2 >> 8);
     lcd_spi_write_data(y2 & 0xff);
-
-    // Wait for TE signal before starting memory write
-    if (!lcd_spi_wait_for_te(100)) {
-        ESP_LOGW(TAG, "TE signal timeout, proceeding with write");
-    }
-
     // Begin memory write
     lcd_spi_write_cmd(0x2c);
 }

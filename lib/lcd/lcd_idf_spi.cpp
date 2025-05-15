@@ -1,13 +1,18 @@
-#include "Arduino.h"
-#include "sdkconfig.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#ifdef LCD_SPI_IDF_API
+
+#include <stdint.h>
+#include <string.h>
+#include "driver/spi_master.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_rom_sys.h"
 #include "esp_attr.h"
-#include "lcd_idf_spi.h"
-#include "esp_log.h"
-#include <string.h>
-#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "sdkconfig.h"
+#include "Arduino.h"
+#include "lcd_spi_api.h"
 
 #ifdef CONFIG_FREERTOS_ENABLE_BACKWARD_COMPATIBILITY
 #define pdMS_TO_TICKS(ms) ((ms) / portTICK_PERIOD_MS)
@@ -33,14 +38,18 @@ static const int64_t TE_TIMEOUT_US = 100000; // 100ms timeout
 static te_callback_t user_te_callback = NULL;
 
 // This function is called (in irq context!) just before a transmission starts
-static void IRAM_ATTR lcd_idf_spi_pre_transfer_callback(spi_transaction_t *t)
+static void IRAM_ATTR lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 {
     if (t && t->user) {
         gpio_set_level((gpio_num_t)PIN_NUM_DC, (int)t->user);
     }
 }
 
-static void lcd_idf_spi_reset(void)
+void spi_test(void)
+{
+
+}
+static void lcd_spi_reset(void)
 {
     LCD_RST_H;
     esp_rom_delay_us(20000);  // 20ms
@@ -50,7 +59,7 @@ static void lcd_idf_spi_reset(void)
     esp_rom_delay_us(200000); // 200ms
 }
 
-void lcd_idf_spi_set_te_callback(te_callback_t callback) {
+void lcd_spi_set_te_callback(te_callback_t callback) {
     user_te_callback = callback;
 }
 
@@ -69,7 +78,7 @@ void IRAM_ATTR et_isr(void* arg) {
     }
 }
 
-bool lcd_idf_spi_wait_for_te(uint32_t timeout_ms) {
+bool lcd_spi_wait_for_te(uint32_t timeout_ms) {
     uint32_t start = xTaskGetTickCount();
     while (!te_signal_received) {
         if ((xTaskGetTickCount() - start) >= pdMS_TO_TICKS(timeout_ms)) {
@@ -81,10 +90,9 @@ bool lcd_idf_spi_wait_for_te(uint32_t timeout_ms) {
     return true;
 }
 
-esp_err_t lcd_idf_spi_init(void)
+esp_err_t lcd_spi_init(void)
 {
     esp_err_t ret;
-
     // Initialize non-SPI GPIOs
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
@@ -160,7 +168,7 @@ esp_err_t lcd_idf_spi_init(void)
     devcfg.mode = 0;                  // SPI mode 0
     devcfg.spics_io_num = -1;         // CS pin handled manually
     devcfg.queue_size = 7;
-    devcfg.pre_cb = lcd_idf_spi_pre_transfer_callback;
+    devcfg.pre_cb = lcd_spi_pre_transfer_callback;
     devcfg.flags = SPI_DEVICE_HALFDUPLEX | SPI_DEVICE_NO_DUMMY;
 
     ret = spi_bus_add_device(LCD_HOST, &devcfg, &spi);
@@ -177,17 +185,17 @@ esp_err_t lcd_idf_spi_init(void)
     LCD_RST_H; // No reset
 
     // Reset LCD
-    lcd_idf_spi_reset();
+    lcd_spi_reset();
     Serial.println("LCD reset complete");
 
     // Initialize LCD commands
-    lcd_idf_spi_init_cmds();
+    lcd_spi_init_cmds();
     Serial.println("LCD initialization commands sent");
 
     return ESP_OK;
 }
 
-void lcd_idf_spi_deinit(void)
+void lcd_spi_deinit(void)
 {
     if (spi) {
         spi_bus_remove_device(spi);
@@ -196,7 +204,7 @@ void lcd_idf_spi_deinit(void)
     }
 }
 
-void lcd_idf_spi_write_cmd(uint8_t cmd)
+void lcd_spi_write_cmd(uint8_t cmd)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
@@ -219,7 +227,7 @@ void lcd_idf_spi_write_cmd(uint8_t cmd)
     }
 }
 
-void lcd_idf_spi_write_data(uint8_t data)
+void lcd_spi_write_data(uint8_t data)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
@@ -246,37 +254,26 @@ void lcd_idf_spi_write_data(uint8_t data)
 
 
 
-void lcd_idf_spi_cs_and_dc_start(void)
+void lcd_spi_cs_and_dc_start(void)
 {
     LCD_CS_L;
     LCD_DC_H;
 }
 
-void lcd_idf_spi_cs_and_dc_end(void)
+void lcd_spi_cs_and_dc_end(void)
 {
     LCD_CS_H;
 }
 
-void lcd_idf_spi_scroll_start(uint16_t data_16)
+void lcd_spi_scroll_start(uint16_t line_num)
 {
-if (!spi) {
-        ESP_LOGE(TAG, "SPI device not initialized");
-        return;
-    }
-    esp_err_t ret;
-    uint8_t data[2] = {(uint8_t)(data_16 >> 8), (uint8_t)(data_16 & 0xFF)};
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    t.length = 16;
-    t.tx_buffer = data;
-    t.user = (void*)1;
-    ret = spi_device_polling_transmit(spi, &t);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write data 0x%04X: %d", data_16, ret);
-    }
+
+    lcd_spi_write_cmd(0x37);
+    lcd_spi_write_data(line_num >> 8);
+    lcd_spi_write_data(line_num & 0xff);
 }
 
-void lcd_idf_spi_write_data_16(uint16_t data_16)
+void lcd_spi_write_data_16(uint16_t data_16)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
@@ -332,7 +329,7 @@ void lcd_idf_spi_write_data_16(uint16_t data_16)
 }
 
 
-void lcd_idf_spi_write_color(uint16_t color)
+void lcd_spi_write_color(uint16_t color)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
@@ -356,7 +353,7 @@ void lcd_idf_spi_write_color(uint16_t color)
         ESP_LOGE(TAG, "Failed to write color 0x%04X: %d", color, ret);
     }
 }
-void lcd_idf_spi_read_data(uint8_t command, uint8_t *data, uint16_t length)
+void lcd_spi_read_data(uint8_t command, uint8_t *data, uint16_t length)
 {
     if (data == NULL || length == 0) return;
     
@@ -385,24 +382,24 @@ void lcd_idf_spi_read_data(uint8_t command, uint8_t *data, uint16_t length)
     }
 }
 
-uint8_t lcd_idf_spi_read_register(uint8_t reg)
+uint8_t lcd_spi_read_register(uint8_t reg)
 {
     uint8_t data[4];
-    lcd_idf_spi_read_data(reg, data, 1);
+    lcd_spi_read_data(reg, data, 1);
     return data[0];
 }
 
-void lcd_idf_spi_read_registers(uint8_t reg, uint8_t *data, uint16_t length)
+void lcd_spi_read_registers(uint8_t reg, uint8_t *data, uint16_t length)
 {
     while (length > 0) {
         uint16_t chunk_size = (length > 4) ? 4 : length;
-        lcd_idf_spi_read_data(reg, data, chunk_size);
+        lcd_spi_read_data(reg, data, chunk_size);
         data += chunk_size;
         length -= chunk_size;
     }
 }
 
-void lcd_idf_spi_block_write(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
+void lcd_spi_block_write(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
@@ -410,79 +407,79 @@ void lcd_idf_spi_block_write(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
     }
 
     // Set column address
-    lcd_idf_spi_write_cmd(0x2a);
-    lcd_idf_spi_write_data(x1 >> 8);
-    lcd_idf_spi_write_data(x1 & 0xff);
-    lcd_idf_spi_write_data(x2 >> 8);
-    lcd_idf_spi_write_data(x2 & 0xff);
+    lcd_spi_write_cmd(0x2a);
+    lcd_spi_write_data(x1 >> 8);
+    lcd_spi_write_data(x1 & 0xff);
+    lcd_spi_write_data(x2 >> 8);
+    lcd_spi_write_data(x2 & 0xff);
 
     // Set row address
-    lcd_idf_spi_write_cmd(0x2b);
-    lcd_idf_spi_write_data(y1 >> 8);
-    lcd_idf_spi_write_data(y1 & 0xff);
-    lcd_idf_spi_write_data(y2 >> 8);
-    lcd_idf_spi_write_data(y2 & 0xff);
+    lcd_spi_write_cmd(0x2b);
+    lcd_spi_write_data(y1 >> 8);
+    lcd_spi_write_data(y1 & 0xff);
+    lcd_spi_write_data(y2 >> 8);
+    lcd_spi_write_data(y2 & 0xff);
 
     // Wait for TE signal before starting memory write
-    if (!lcd_idf_spi_wait_for_te(100)) {
+    if (!lcd_spi_wait_for_te(100)) {
         ESP_LOGW(TAG, "TE signal timeout, proceeding with write");
     }
 
     // Begin memory write
-    lcd_idf_spi_write_cmd(0x2c);
+    lcd_spi_write_cmd(0x2c);
 }
 
 
-void lcd_idf_spi_set_scroll_window(uint16_t top_fixed, uint16_t scroll_content, uint16_t bottom_fixed)
+void lcd_spi_set_scroll_window(uint16_t top_fixed, uint16_t scroll_content, uint16_t bottom_fixed)
 {
-    lcd_idf_spi_write_cmd(0x33);
-    lcd_idf_spi_write_data(top_fixed >> 8);
-    lcd_idf_spi_write_data(top_fixed & 0xff);
-    lcd_idf_spi_write_data(scroll_content >> 8);
-    lcd_idf_spi_write_data(scroll_content & 0xff);
-    lcd_idf_spi_write_data(bottom_fixed >> 8);
-    lcd_idf_spi_write_data(bottom_fixed & 0xff);
+    lcd_spi_write_cmd(0x33);
+    lcd_spi_write_data(top_fixed >> 8);
+    lcd_spi_write_data(top_fixed & 0xff);
+    lcd_spi_write_data(scroll_content >> 8);
+    lcd_spi_write_data(scroll_content & 0xff);
+    lcd_spi_write_data(bottom_fixed >> 8);
+    lcd_spi_write_data(bottom_fixed & 0xff);
 }
 
 
-void lcd_idf_spi_scroll_starts(uint16_t line_num[],uint16_t length)
+void lcd_spi_scroll_starts(uint16_t line_num[],uint16_t length)
 {
-    lcd_idf_spi_write_cmd(0x37);
+    lcd_spi_write_cmd(0x37);
 
 
 
     
     for (int i = 0; i < length; i++) {
-        lcd_idf_spi_write_data(line_num[i] >> 8);
-        lcd_idf_spi_write_data(line_num[i] & 0xff);
+        lcd_spi_write_data(line_num[i] >> 8);
+        lcd_spi_write_data(line_num[i] & 0xff);
     }
 }
 
-void lcd_idf_spi_clear_screen(uint16_t color)
+void lcd_spi_clear_screen(uint16_t color)
 {
-    lcd_idf_spi_block_write(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+    lcd_spi_block_write(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
     for (int i = 0; i < LCD_HEIGHT; i++) {
         for (int j = 0; j < LCD_WIDTH; j++) {
-            lcd_idf_spi_write_color(color);
+            lcd_spi_write_color(color);
         }
     }
 }
 
-void lcd_idf_spi_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
+void lcd_spi_draw_pixel(uint16_t x, uint16_t y, uint16_t color)
 {
     if (x >= LCD_WIDTH || y >= LCD_HEIGHT) return;
-    lcd_idf_spi_block_write(x, y, x, y);
-    lcd_idf_spi_write_color(color);
+    lcd_spi_block_write(x, y, x, y);
+    lcd_spi_write_color(color);
 }
 
-void lcd_idf_spi_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color)
+void lcd_spi_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color)
 {
     int dx = abs(x2 - x1), sx = x1 < x2 ? 1 : -1;
     int dy = -abs(y2 - y1), sy = y1 < y2 ? 1 : -1;
     int err = dx + dy, e2;
 
     while (1) {
-        lcd_idf_spi_draw_pixel(x1, y1, color);
+        lcd_spi_draw_pixel(x1, y1, color);
         if (x1 == x2 && y1 == y2) break;
         e2 = 2 * err;
         if (e2 >= dy) { err += dy; x1 += sx; }
@@ -490,22 +487,22 @@ void lcd_idf_spi_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, u
     }
 }
 
-void lcd_idf_spi_draw_row(uint16_t y, uint16_t color)
+void lcd_spi_draw_row(uint16_t y, uint16_t color)
 {
     if (y >= LCD_HEIGHT) return;
-    lcd_idf_spi_block_write(0, y, LCD_WIDTH - 1, y);
+    lcd_spi_block_write(0, y, LCD_WIDTH - 1, y);
     for (int x = 0; x < LCD_WIDTH; x++) {
-        lcd_idf_spi_write_color(color);
+        lcd_spi_write_color(color);
     }
 }
 
-void lcd_idf_spi_block_write_row(uint16_t y)
+void lcd_spi_block_write_row(uint16_t y)
 {
     if (y >= LCD_HEIGHT) return;
-    lcd_idf_spi_block_write(0, y, LCD_WIDTH - 1, y);
+    lcd_spi_block_write(0, y, LCD_WIDTH - 1, y);
 }
 
-void lcd_idf_spi_start_write_color(void)
+void lcd_spi_start_write_color(void)
 {
     memset(&trans, 0, sizeof(spi_transaction_t));
     trans.user = (void*)1;
@@ -513,12 +510,12 @@ void lcd_idf_spi_start_write_color(void)
     gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);  // DC High
 }
 
-void lcd_idf_spi_end_write_color(void)
+void lcd_spi_end_write_color(void)
 {
     gpio_set_level((gpio_num_t)PIN_NUM_CS, 1);  // CS High
 }
 
-void lcd_idf_spi_continue_write_color(uint16_t color)
+void lcd_spi_continue_write_color(uint16_t color)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
@@ -532,6 +529,8 @@ void lcd_idf_spi_continue_write_color(uint16_t color)
     
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to continue write color 0x%04X: %d", color, ret);
-        lcd_idf_spi_end_write_color();  // Clean up on error
+        lcd_spi_end_write_color();  // Clean up on error
     }
-} 
+}
+
+#endif // LCD_SPI_IDF_API 

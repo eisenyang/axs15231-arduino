@@ -4,7 +4,7 @@
 #include <freertos/task.h>
 #include <TFT_eSPI.h>
 #include "SpriteTextManager.h"
-#include "lcd_arduino_spi.h"
+#include "lcd_spi_api.h"
 #include <TFT_eSPI.h>
 #include "TruetypeManager.h"
 #define MY_TTF "/AlibabaPuHuiTi-3-35-Thin.ttf"
@@ -289,7 +289,7 @@ void setup()
   xTaskCreatePinnedToCore(TaskReadBufFromTruetype, "TaskReadBufFromTruetype", 8048, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(TaskScrollScreen, "TaskScrollScreen", 8048, NULL, 1, NULL, 1);
   if(true){
-    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(5), pdTRUE, NULL, TaskReadBuf2Screen);
+    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(2), pdTRUE, NULL, TaskReadBuf2Screen);
       if (xTimer == NULL)
       {
         Serial.println("定时器创建失败！");

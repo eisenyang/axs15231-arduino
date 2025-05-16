@@ -30,6 +30,7 @@ class SpriteTextManager{
         void enableWriteColor();
         void disableWriteColor();
         void writeColor(uint16_t color);
+        void writeColors(const uint16_t* colors,size_t length);
         void blockLcdWrite(uint16_t x0,uint16_t y0,uint16_t x1,uint16_t y1);
         void clearSprite();
         void drawRow2LCD(uint16_t y,uint16_t color);

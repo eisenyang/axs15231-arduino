@@ -9,7 +9,7 @@
 
 #define LCD_DC_H digitalWrite(PIN_NUM_DC, HIGH)
 #define LCD_DC_L digitalWrite(PIN_NUM_DC, LOW)
-#define LCD_CS_H digitalWrite(PIN_NUM_CS, HIGH)
+#define LCD_CS_H digitalWrite(PIN_NUM_CS, LOW)
 #define LCD_CS_L digitalWrite(PIN_NUM_CS, LOW)
 #define LCD_RST_H digitalWrite(PIN_NUM_RST, HIGH)
 #define LCD_RST_L digitalWrite(PIN_NUM_RST, LOW)
@@ -36,8 +36,8 @@ esp_err_t lcd_spi_init(void)
     pinMode(PIN_NUM_DC, OUTPUT);
     pinMode(PIN_NUM_TE, INPUT_PULLUP);
     
-    LCD_CS_H;
-    LCD_DC_H;
+    LCD_CS_L;
+    //LCD_DC_H;
 
     lcd_spi_reset();
 
@@ -61,6 +61,22 @@ void lcd_spi_uninit()
         lcd_spi = NULL;
     }
 }
+void lcd_spi_set_cs_high(void)
+{
+    LCD_CS_H;
+}
+void lcd_spi_set_cs_low(void)
+{
+    LCD_CS_L;
+}
+void lcd_spi_set_dc_high(void)
+{
+    LCD_DC_H;
+}
+void lcd_spi_set_dc_low(void)
+{
+    LCD_DC_L;
+}
 void lcd_spi_write_cmd(uint8_t command)
 {
     LCD_CS_L;
@@ -71,7 +87,16 @@ void lcd_spi_write_cmd(uint8_t command)
     lcd_spi->endTransaction();
     LCD_CS_H;
 }
-
+void lcd_spi_set_scroll_rows(uint16_t rows)
+{
+    //lcd_spi_write_cmd(0x37);
+    LCD_CS_L;
+    LCD_DC_L;
+    lcd_spi->beginTransaction(SPISettings(SPI_FREQUENCY, MSBFIRST, SPI_MODE0));
+    lcd_spi->write(rows);
+    lcd_spi->endTransaction();
+    LCD_CS_H;
+}
 void lcd_spi_write_data(uint8_t data)
 {
     LCD_CS_L;
@@ -79,7 +104,6 @@ void lcd_spi_write_data(uint8_t data)
     lcd_spi->beginTransaction(SPISettings(SPI_FREQUENCY, MSBFIRST, SPI_MODE0));
     lcd_spi->write(data);
     lcd_spi->endTransaction();
-    // lcd_spi->transfer(data);
     LCD_CS_H;
 }
 
@@ -98,6 +122,38 @@ void lcd_spi_block_write(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
     lcd_spi_write_data(y2 & 0xff);
 
     lcd_spi_write_cmd(0x2c);
+}
+void lcd_spi_continue_write_color(uint16_t color)
+{
+    lcd_spi->write(color >> 8);
+    lcd_spi->write(color & 0xff);
+}
+void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len)
+{
+    if (!colors || len == 0) return;
+    // 使用32字节的缓冲区来批量传输
+    static uint8_t buffer[32];
+    size_t remaining = len;
+    size_t offset = 0;
+    
+    while (remaining > 0) {
+        // 计算本次传输的像素数量
+        size_t batch_pixels = (remaining > 16) ? 16 : remaining;  // 32字节缓冲区可以存储16个像素
+        size_t batch_bytes = batch_pixels * 2;
+        
+        // 填充缓冲区
+        for (size_t i = 0; i < batch_pixels; i++) {
+            buffer[i * 2] = colors[offset + i] >> 8;
+            buffer[i * 2 + 1] = colors[offset + i] & 0xFF;
+        }
+        
+        // 批量传输
+        lcd_spi->writeBytes(buffer, batch_bytes);
+        
+        remaining -= batch_pixels;
+        offset += batch_pixels;
+    }
+
 }
 
 void lcd_spi_write_color(uint16_t color)
@@ -124,11 +180,7 @@ void lcd_spi_end_write_color()
     lcd_spi->endTransaction();
     LCD_CS_H;
 }
-void lcd_spi_continue_write_color(uint16_t color)
-{
-    lcd_spi->write(color >> 8);
-    lcd_spi->write(color & 0xff);
-}
+
 void lcd_spi_set_scroll_window(uint16_t top_fixed, uint16_t scroll_content, uint16_t bottom_fixed)
 {
     lcd_spi_write_cmd(0x33);

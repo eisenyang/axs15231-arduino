@@ -125,7 +125,9 @@ void SpriteTextManager::disableWriteColor(){
 void SpriteTextManager::writeColor(uint16_t color){   
     lcd_spi_continue_write_color(color);
 }
-
+void SpriteTextManager::writeColors(const uint16_t* colors,size_t length){
+    lcd_spi_continue_write_colors(colors,length);
+}
 void SpriteTextManager::setPixel(int16_t x,int16_t y,uint16_t color){
     if (sprite != nullptr) {
         sprite->drawPixel(x, y, color);

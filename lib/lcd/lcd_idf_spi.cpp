@@ -49,6 +49,23 @@ void spi_test(void)
 {
 
 }
+
+void lcd_spi_set_cs_high(void)
+{
+    LCD_CS_H;
+}
+void lcd_spi_set_cs_low(void)
+{
+    LCD_CS_L;
+}
+void lcd_spi_set_dc_high(void)
+{
+    LCD_DC_H;
+}
+void lcd_spi_set_dc_low(void)
+{
+    LCD_DC_L;
+}
 static void lcd_spi_reset(void)
 {
     LCD_RST_H;
@@ -106,7 +123,7 @@ esp_err_t lcd_spi_init(void)
         Serial.println("GPIO config failed");
         return ret;
     }
-    Serial.println("GPIO config success");
+   
 
     // Configure TE pin as input with pull-up
     gpio_config_t te_conf = {
@@ -120,7 +137,6 @@ esp_err_t lcd_spi_init(void)
         Serial.println("TE pin config failed");
         return ret;
     }
-    Serial.println("TE pin config success");
 
     // Install GPIO ISR service
     ret = gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3);
@@ -128,7 +144,7 @@ esp_err_t lcd_spi_init(void)
         Serial.println("GPIO install isr service failed");
         return ret;
     }
-    Serial.println("GPIO ISR service installed");
+    
 
     // Add ISR handler for TE pin
     ret = gpio_isr_handler_add(PIN_NUM_TE, et_isr, NULL);
@@ -136,7 +152,7 @@ esp_err_t lcd_spi_init(void)
         Serial.println("GPIO isr handler add failed");
         return ret;
     }
-    Serial.println("TE pin ISR handler added");
+    
 
     // Initialize SPI bus
     spi_bus_config_t buscfg;
@@ -146,7 +162,7 @@ esp_err_t lcd_spi_init(void)
     buscfg.sclk_io_num = PIN_NUM_CLK;
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
-    buscfg.max_transfer_sz = LCD_WIDTH * LCD_HEIGHT * 2 + 8;
+    buscfg.max_transfer_sz = LCD_WIDTH * 2;
     buscfg.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_SCLK | SPICOMMON_BUSFLAG_MOSI;
     buscfg.intr_flags = 0;    // Disable interrupt flags
 
@@ -155,7 +171,7 @@ esp_err_t lcd_spi_init(void)
         Serial.println("SPI bus initialize failed");
         return ret;
     }
-    Serial.println("SPI bus initialized");
+    
 
     // Attach LCD to SPI bus
     spi_device_interface_config_t devcfg;
@@ -167,8 +183,11 @@ esp_err_t lcd_spi_init(void)
     devcfg.duty_cycle_pos = 128;      // 50% duty cycle
     devcfg.mode = 0;                  // SPI mode 0
     devcfg.spics_io_num = -1;         // CS pin handled manually
-    devcfg.queue_size = 7;
+    devcfg.queue_size = 1;// 非事务模式，队列大小为1
     devcfg.pre_cb = lcd_spi_pre_transfer_callback;
+    devcfg.input_delay_ns = 0;
+    devcfg.cs_ena_pretrans = 0;
+    devcfg.cs_ena_posttrans = 0;
     devcfg.flags = SPI_DEVICE_HALFDUPLEX | SPI_DEVICE_NO_DUMMY;
 
     ret = spi_bus_add_device(LCD_HOST, &devcfg, &spi);
@@ -177,7 +196,7 @@ esp_err_t lcd_spi_init(void)
         spi_bus_free(LCD_HOST);
         return ret;
     }
-    Serial.println("SPI device added");
+    
 
     // Set initial pin states
     LCD_CS_H;  // CS inactive
@@ -186,11 +205,10 @@ esp_err_t lcd_spi_init(void)
 
     // Reset LCD
     lcd_spi_reset();
-    Serial.println("LCD reset complete");
 
     // Initialize LCD commands
     lcd_spi_init_cmds();
-    Serial.println("LCD initialization commands sent");
+    Serial.println("LCD SPI IDF API initialized");
 
     return ESP_OK;
 }
@@ -210,6 +228,21 @@ void lcd_spi_write_cmd(uint8_t cmd)
         ESP_LOGE(TAG, "SPI device not initialized");
         return;
     }
+
+
+    // spi_transaction_t t;
+    // memset(&t, 0, sizeof(t));
+    // t.length = 8;
+    // t.tx_buffer = &cmd;
+    // t.flags = SPI_TRANS_USE_TXDATA;  // 使用DMA
+    // LCD_CS_L;
+    // LCD_DC_L;
+    
+    // // 正确的调用方式
+    // spi_transaction_t* ret_trans;
+    // spi_device_queue_trans(spi, &t, portMAX_DELAY);  // 非阻塞传输
+    // spi_device_get_trans_result(spi, &ret_trans, portMAX_DELAY);
+    // LCD_CS_H;
 
     esp_err_t ret;
     spi_transaction_t t;
@@ -251,18 +284,10 @@ void lcd_spi_write_data(uint8_t data)
     }
 }
 
-
-
-
-void lcd_spi_cs_and_dc_start(void)
+void lcd_spi_set_scroll_rows(uint16_t rows)
 {
-    LCD_CS_L;
-    LCD_DC_H;
-}
-
-void lcd_spi_cs_and_dc_end(void)
-{
-    LCD_CS_H;
+    lcd_spi_write_data(rows >> 8);
+    lcd_spi_write_data(rows & 0xff);
 }
 
 void lcd_spi_scroll_start(uint16_t line_num)
@@ -271,6 +296,37 @@ void lcd_spi_scroll_start(uint16_t line_num)
     lcd_spi_write_cmd(0x37);
     lcd_spi_write_data(line_num >> 8);
     lcd_spi_write_data(line_num & 0xff);
+
+
+    // static uint8_t tx_data[3];
+    // static spi_transaction_t t = {
+    //     .length = 24,  // 3字节 = 24位
+    //     .tx_buffer = tx_data,
+    //     .flags = 0
+    // };
+    
+    // // 准备数据
+    // tx_data[0] = 0x37;  // 命令
+    // tx_data[1] = line_num >> 8;
+    // tx_data[2] = line_num & 0xff;
+    
+    // // 一次传输完成
+    // LCD_CS_L;
+    // LCD_DC_L;  // 命令模式
+    // spi_device_polling_transmit(spi, &t);
+    // LCD_CS_H;
+
+    // uint8_t data[3] = {0x37, (uint8_t)(line_num >> 8), (uint8_t)(line_num & 0xff)};
+    // spi_transaction_t t;
+    // memset(&t, 0, sizeof(t));
+    // t.length = 24;  // 一次传输所有数据
+    // t.tx_buffer = data;
+    // t.flags = SPI_TRANS_USE_TXDATA;
+    // LCD_CS_L;
+    
+    // // 正确的调用方式
+    // spi_device_polling_transmit(spi, &t);
+    // LCD_CS_H;
 }
 
 void lcd_spi_write_data_16(uint16_t data_16)
@@ -288,10 +344,10 @@ void lcd_spi_write_data_16(uint16_t data_16)
     t.tx_buffer = data;
     t.user = (void*)1;
 
-    LCD_CS_L; // Select the LCD
-    LCD_DC_H; 
+    //LCD_CS_L; // Select the LCD
+    //LCD_DC_H; 
     ret = spi_device_polling_transmit(spi, &t);
-    LCD_CS_H;  // Deselect the LCD
+    //LCD_CS_H;  // Deselect the LCD
 
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write data 0x%04X: %d", data_16, ret);
@@ -509,22 +565,50 @@ void lcd_spi_end_write_color(void)
     gpio_set_level((gpio_num_t)PIN_NUM_CS, 1);  // CS High
 }
 
-void lcd_spi_continue_write_color(uint16_t color)
+// 添加批量传输函数
+void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
         return;
     }
 
-    uint8_t data[2] = {(uint8_t)(color >> 8), (uint8_t)(color & 0xFF)};
-    trans.length = 16;
-    trans.tx_buffer = data;
-    esp_err_t ret = spi_device_polling_transmit(spi, &trans);
-    
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to continue write color 0x%04X: %d", color, ret);
-        lcd_spi_end_write_color();  // Clean up on error
+    static uint8_t data[SPI_MAX_DMA_LEN];  // 使用DMA最大长度
+    size_t remaining = len;
+    size_t offset = 0;
+
+    while (remaining > 0) {
+        // 计算本次传输的像素数量
+        size_t batch_pixels = (remaining > (SPI_MAX_DMA_LEN/2)) ? (SPI_MAX_DMA_LEN/2) : remaining;
+        size_t batch_bytes = batch_pixels * 2;
+
+        // 转换颜色格式
+        for (size_t i = 0; i < batch_pixels; i++) {
+            data[i*2] = (uint8_t)(colors[offset + i] >> 8);
+            data[i*2 + 1] = (uint8_t)(colors[offset + i] & 0xFF);
+        }
+
+        // 配置传输
+        trans.length = batch_bytes * 8;  // bits
+        trans.tx_buffer = data;
+        
+        // 执行传输
+        esp_err_t ret = spi_device_polling_transmit(spi, &trans);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to continue write colors: %d", ret);
+            lcd_spi_end_write_color();  // 错误时清理
+            return;
+        }
+
+        remaining -= batch_pixels;
+        offset += batch_pixels;
     }
+}
+
+// 保持原有单像素传输函数的兼容性
+void lcd_spi_continue_write_color(uint16_t color)
+{
+    lcd_spi_continue_write_colors(&color, 1);
 }
 
 #endif // LCD_SPI_IDF_API 

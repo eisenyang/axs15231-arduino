@@ -14,8 +14,11 @@ typedef void (*te_callback_t)(void* arg);
 // Function declarations
 void spi_test(void);
 esp_err_t lcd_spi_init(void);
-void lcd_spi_cs_and_dc_start(void);
-void lcd_spi_cs_and_dc_end(void);
+void lcd_spi_set_scroll_rows(uint16_t rows);
+void lcd_spi_set_cs_high(void);
+void lcd_spi_set_cs_low(void);
+void lcd_spi_set_dc_high(void);
+void lcd_spi_set_dc_low(void);
 void lcd_spi_deinit(void);
 void lcd_spi_write_cmd(uint8_t cmd);
 void lcd_spi_write_data(uint8_t data);
@@ -42,4 +45,19 @@ void lcd_spi_start_write_color(void);
 void lcd_spi_end_write_color(void);
 void lcd_spi_continue_write_color(uint16_t color);
 
+/**
+ * @brief 批量写入多个颜色数据到LCD
+ * @param colors 16位颜色值数组
+ * @param len 颜色值数量
+ */
+void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len);
+
 #endif // __IDF_SPI_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef __cplusplus
+}
+#endif

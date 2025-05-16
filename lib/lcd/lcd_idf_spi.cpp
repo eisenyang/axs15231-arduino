@@ -385,30 +385,30 @@ void lcd_spi_write_data_16(uint16_t data_16)
 }
 
 
-void lcd_spi_write_color(uint16_t color)
-{
-    if (!spi) {
-        ESP_LOGE(TAG, "SPI device not initialized");
-        return;
-    }
+// void lcd_spi_write_color(uint16_t color)
+// {
+//     if (!spi) {
+//         ESP_LOGE(TAG, "SPI device not initialized");
+//         return;
+//     }
 
-    esp_err_t ret;
-    uint8_t data[2] = {(uint8_t)(color >> 8), (uint8_t)(color & 0xFF)};
-    spi_transaction_t t;
-    memset(&t, 0, sizeof(t));
-    t.length = 16;
-    t.tx_buffer = data;
-    t.user = (void*)1;
+//     esp_err_t ret;
+//     uint8_t data[2] = {(uint8_t)(color >> 8), (uint8_t)(color & 0xFF)};
+//     spi_transaction_t t;
+//     memset(&t, 0, sizeof(t));
+//     t.length = 16;
+//     t.tx_buffer = data;
+//     t.user = (void*)1;
 
-    LCD_CS_L; // Select the LCD
-    LCD_DC_H; 
-    ret = spi_device_polling_transmit(spi, &t);
-    LCD_CS_H;  // Deselect the LCD
+//     LCD_CS_L; // Select the LCD
+//     LCD_DC_H; 
+//     ret = spi_device_polling_transmit(spi, &t);
+//     LCD_CS_H;  // Deselect the LCD
 
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write color 0x%04X: %d", color, ret);
-    }
-}
+//     if (ret != ESP_OK) {
+//         ESP_LOGE(TAG, "Failed to write color 0x%04X: %d", color, ret);
+//     }
+// }
 void lcd_spi_read_data(uint8_t command, uint8_t *data, uint16_t length)
 {
     if (data == NULL || length == 0) return;
@@ -552,26 +552,17 @@ void lcd_spi_block_write_row(uint16_t y)
     lcd_spi_block_write(0, y, LCD_WIDTH - 1, y);
 }
 
-void lcd_spi_start_write_color(void)
-{
-    memset(&trans, 0, sizeof(spi_transaction_t));
-    trans.user = (void*)1;
-    gpio_set_level((gpio_num_t)PIN_NUM_CS, 0);  // CS Low
-    gpio_set_level((gpio_num_t)PIN_NUM_DC, 1);  // DC High
-}
-
-void lcd_spi_end_write_color(void)
-{
-    gpio_set_level((gpio_num_t)PIN_NUM_CS, 1);  // CS High
-}
 
 // 添加批量传输函数
-void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len)
+void lcd_spi_write_colors(const uint16_t* colors, size_t len)
 {
     if (!spi) {
         ESP_LOGE(TAG, "SPI device not initialized");
         return;
     }
+
+    LCD_CS_L; // Select the LCD
+    LCD_DC_H; 
 
     static uint8_t data[SPI_MAX_DMA_LEN];  // 使用DMA最大长度
     size_t remaining = len;
@@ -596,19 +587,21 @@ void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len)
         esp_err_t ret = spi_device_polling_transmit(spi, &trans);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to continue write colors: %d", ret);
-            lcd_spi_end_write_color();  // 错误时清理
+            //lcd_spi_end_write_color();  // 错误时清理
             return;
         }
 
         remaining -= batch_pixels;
         offset += batch_pixels;
     }
+
+    LCD_CS_H;
 }
 
 // 保持原有单像素传输函数的兼容性
-void lcd_spi_continue_write_color(uint16_t color)
+void lcd_spi_write_color(uint16_t color)
 {
-    lcd_spi_continue_write_colors(&color, 1);
+    lcd_spi_write_colors(&color, 1);
 }
 
 #endif // LCD_SPI_IDF_API 

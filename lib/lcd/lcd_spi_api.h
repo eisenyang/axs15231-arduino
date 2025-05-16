@@ -41,16 +41,14 @@ void lcd_spi_draw_pixel(uint16_t x, uint16_t y, uint16_t color);
 void lcd_spi_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t color);
 void lcd_spi_draw_row(uint16_t y, uint16_t color);
 void lcd_spi_block_write_row(uint16_t y);
-void lcd_spi_start_write_color(void);
-void lcd_spi_end_write_color(void);
-void lcd_spi_continue_write_color(uint16_t color);
+void lcd_spi_write_color(uint16_t color);
 
 /**
  * @brief 批量写入多个颜色数据到LCD
  * @param colors 16位颜色值数组
  * @param len 颜色值数量
  */
-void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len);
+void lcd_spi_write_colors(const uint16_t* colors, size_t len);
 
 #endif // __IDF_SPI_H__
 

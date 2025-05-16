@@ -123,13 +123,13 @@ void lcd_spi_block_write(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 
     lcd_spi_write_cmd(0x2c);
 }
-void lcd_spi_continue_write_color(uint16_t color)
+
+void lcd_spi_write_colors(const uint16_t* colors, size_t len)
 {
-    lcd_spi->write(color >> 8);
-    lcd_spi->write(color & 0xff);
-}
-void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len)
-{
+
+    LCD_CS_L;
+    LCD_DC_H;
+    lcd_spi->beginTransaction(SPISettings(SPI_FREQUENCY, MSBFIRST, SPI_MODE0));
     if (!colors || len == 0) return;
     // 使用32字节的缓冲区来批量传输
     static uint8_t buffer[32];
@@ -154,6 +154,9 @@ void lcd_spi_continue_write_colors(const uint16_t* colors, size_t len)
         offset += batch_pixels;
     }
 
+    lcd_spi->endTransaction();
+    LCD_CS_H;
+
 }
 
 void lcd_spi_write_color(uint16_t color)
@@ -167,19 +170,6 @@ void lcd_spi_write_color(uint16_t color)
     LCD_CS_H;
 }
 
-void lcd_spi_start_write_color()
-{
-    LCD_CS_L;
-    LCD_DC_H;
-    lcd_spi->beginTransaction(SPISettings(SPI_FREQUENCY, MSBFIRST, SPI_MODE0));
-    
-    
-}
-void lcd_spi_end_write_color()
-{
-    lcd_spi->endTransaction();
-    LCD_CS_H;
-}
 
 void lcd_spi_set_scroll_window(uint16_t top_fixed, uint16_t scroll_content, uint16_t bottom_fixed)
 {

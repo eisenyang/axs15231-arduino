@@ -103,64 +103,11 @@ void writeBufToScreen(uint8_t *framebuffer, uint16_t y)
       if(ENABLE_SERIAL){
         Serial.printf("%d行写入开始，当前写入的行:%s",SCREEN_ROW,String(y));
       }
-      spriteTextManager.enableWriteColor();
+      //spriteTextManager.enableWriteColor();
     }
 
     // 一个循环就是一行
-    if(false){
-      for (int x = 0; x < LCD_WIDTH; x++)
-      {
-        if (y < HEIGHT_PIXELS)
-        {
-          
-          // 每一列，写入颜色
-          if(x<WIDTH_PIXELS){
-            uint16_t color = truetypeManager.getPixelColor(framebuffer, x, y);
-            spriteTextManager.writeColor(color);
-          }else{
-            spriteTextManager.writeColor(TFT_BLACK);
-          }
-          
-          if(x==0){
-            if(ENABLE_SERIAL){
-              Serial.println("开始写入行:"+String(y)+",写入列:"+String(x));
-            }
-          }
-          if(x==LCD_WIDTH-1){
-            if(ENABLE_SERIAL){
-              Serial.println("结束写入行:"+String(y)+",写入列:"+String(x));
-            }
-          }
-          
-        }
-        else if (y >= HEIGHT_PIXELS)
-        {
-          // 一行结束，重新初始化
-          y = 0;
-          spriteTextManager.clearSprite();
-        }
-      }
-
-      
-      if (y%SCREEN_ROW == SCREEN_ROW-1)
-      {
-
-        spriteTextManager.disableWriteColor();
-        if(ENABLE_SERIAL){
-          Serial.printf("%d行写入结束，当前写结束的行:%s",SCREEN_ROW,String(y));
-          Serial.printf("<======================%d行滚屏运行结束======================>",SCREEN_ROW);
-        }
-      }
-    }
     
-  
-
-
-
-
-
-
-
     static uint16_t color_buffer[LCD_WIDTH];  // 用于批量传输的缓冲区
 
       // 一次准备一整行的数据
@@ -181,7 +128,7 @@ void writeBufToScreen(uint8_t *framebuffer, uint16_t y)
 
     if (y%SCREEN_ROW == SCREEN_ROW-1)
     {
-        spriteTextManager.disableWriteColor();
+        //spriteTextManager.disableWriteColor();
         if(ENABLE_SERIAL){
             Serial.printf("%d行写入结束，当前写结束的行:%s",SCREEN_ROW,String(y));
             Serial.printf("<======================%d行滚屏运行结束======================>",SCREEN_ROW);

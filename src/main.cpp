@@ -25,13 +25,12 @@ volatile unsigned long interruptInterval = 0;
 volatile uint32_t interruptCount = 0;
 #define MAX_COUNTS 100
 volatile bool needPrintStats = false;
-
+volatile int64_t te_start_time = esp_timer_get_time();
 typedef struct{
   uint16_t y_scroll_offset = 0;
   uint8_t availableIndex = 0;
   bool scrollCompleted = true;
   bool readCompleted = false;
-  bool teEnabled = false;
 }scroll_info_t;
 scroll_info_t scroll_info;
 void printInterruptTime(){
@@ -59,8 +58,7 @@ void initSprite()
   Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
 }
 void srcoll_screen(){
-  if(scroll_info.teEnabled && scroll_info.readCompleted){
-    scroll_info.teEnabled = false;
+  if(scroll_info.readCompleted){
     scroll_info.readCompleted = false;
     if(address <= 0){
       address = LCD_HEIGHT;
@@ -86,8 +84,6 @@ void srcoll_screen(){
     }
     scroll_info.y_scroll_offset++;
     scroll_info.scrollCompleted = true;
-  }else{
-    scroll_info.teEnabled = false;
   }
 }
 void writeBufToScreen(uint8_t *framebuffer, uint16_t y)
@@ -153,8 +149,6 @@ void TaskReadBuf2Screen(TimerHandle_t pxTimer)
       return;
     }
     ulong startTime = micros();
-    
-    
     framebuffer_t *framebuffer_t = truetypeManager.getFramebuffer(scroll_info.availableIndex);
     uint8_t *framebuffer = framebuffer_t->framebuffer;
     if (!framebuffer_t->hasData)
@@ -200,7 +194,6 @@ void TaskReadBufFromTruetype(void *pvParameters)
 void IRAM_ATTR handleRisingEdge() {
   if (xSemaphoreTake(xMutex, 0) == pdTRUE) {  
     //scrollEnabled = true;
-    scroll_info.teEnabled = true;
     xSemaphoreGive(xMutex);
   }
 
@@ -219,6 +212,27 @@ void IRAM_ATTR handleRisingEdge() {
     interruptCount = 0;
   }
 }
+void te_irs_task(void *pvParameters){
+  // if (xSemaphoreTake(xMutex, 0) == pdTRUE) {  
+  //   //scrollEnabled = true;
+  //   scroll_info.teEnabled = true;
+  
+  //   xSemaphoreGive(xMutex);
+  // }
+
+
+  if (xSemaphoreTake(xMutex, 0) == pdTRUE)
+    {
+      //printInterruptTime();
+      int64_t current_time = esp_timer_get_time();
+      int64_t te_time = current_time - te_start_time;
+      if(te_time > 1000){
+        srcoll_screen();
+        te_start_time = current_time;
+      }
+      xSemaphoreGive(xMutex);
+    }
+}
 void setup()
 {
   Serial.begin(115200);
@@ -230,7 +244,8 @@ void setup()
   xMutex = xSemaphoreCreateMutex();
   static ulong lastTime = millis();
   initSprite();
-  attachInterrupt(digitalPinToInterrupt(PIN_NUM_TE), handleRisingEdge, RISING);
+  //attachInterrupt(digitalPinToInterrupt(PIN_NUM_TE), handleRisingEdge, RISING);
+  lcd_spi_set_te_callback(te_irs_task);
   while (!truetypeManager.initTruetype(MY_TTF, nullptr))
   {
     Serial.println("initTruetype failed");
@@ -251,9 +266,9 @@ void setup()
   
   truetypeManager.setDrawString(draw_string);
   xTaskCreatePinnedToCore(TaskReadBufFromTruetype, "TaskReadBufFromTruetype", 8048, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(TaskScrollScreen, "TaskScrollScreen", 8048, NULL, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(TaskScrollScreen, "TaskScrollScreen", 8048, NULL, 1, NULL, 1);
   if(true){
-    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(1), pdTRUE, NULL, TaskReadBuf2Screen);
+    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(2), pdTRUE, NULL, TaskReadBuf2Screen);
       if (xTimer == NULL)
       {
         Serial.println("定时器创建失败！");

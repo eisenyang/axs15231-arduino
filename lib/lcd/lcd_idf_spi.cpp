@@ -293,40 +293,18 @@ void lcd_spi_set_scroll_rows(uint16_t rows)
 void lcd_spi_scroll_start(uint16_t line_num)
 {
 
-    lcd_spi_write_cmd(0x37);
-    lcd_spi_write_data(line_num >> 8);
-    lcd_spi_write_data(line_num & 0xff);
-
-
-    // static uint8_t tx_data[3];
-    // static spi_transaction_t t = {
-    //     .length = 24,  // 3字节 = 24位
-    //     .tx_buffer = tx_data,
-    //     .flags = 0
-    // };
-    
-    // // 准备数据
-    // tx_data[0] = 0x37;  // 命令
-    // tx_data[1] = line_num >> 8;
-    // tx_data[2] = line_num & 0xff;
-    
-    // // 一次传输完成
-    // LCD_CS_L;
-    // LCD_DC_L;  // 命令模式
-    // spi_device_polling_transmit(spi, &t);
-    // LCD_CS_H;
-
-    // uint8_t data[3] = {0x37, (uint8_t)(line_num >> 8), (uint8_t)(line_num & 0xff)};
-    // spi_transaction_t t;
-    // memset(&t, 0, sizeof(t));
-    // t.length = 24;  // 一次传输所有数据
-    // t.tx_buffer = data;
-    // t.flags = SPI_TRANS_USE_TXDATA;
-    // LCD_CS_L;
-    
-    // // 正确的调用方式
-    // spi_device_polling_transmit(spi, &t);
-    // LCD_CS_H;
+    lcd_spi_write_cmd(0x37);    
+    // 一次传输完成
+    LCD_CS_L;
+    uint8_t data[2] = {(uint8_t)(line_num >> 8), (uint8_t)(line_num & 0xff)};
+    spi_transaction_t t;
+    memset(&t, 0, sizeof(t));
+    t.length = 16;  // 一次传输所有数据
+    t.tx_buffer = data;
+    t.user = (void*)1; 
+    // 正确的调用方式
+    spi_device_polling_transmit(spi, &t);
+    //LCD_CS_H;
 }
 
 void lcd_spi_write_data_16(uint16_t data_16)

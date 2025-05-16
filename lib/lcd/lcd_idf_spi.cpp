@@ -304,9 +304,11 @@ void lcd_spi_scroll_start(uint16_t line_num)
     t.user = (void*)1; 
     // 正确的调用方式
     spi_device_polling_transmit(spi, &t);
-    //LCD_CS_H;
 }
 
+void lcd_spi_scroll_end(spi_transaction_t &t){
+    spi_device_polling_transmit(spi, &t);
+}
 void lcd_spi_write_data_16(uint16_t data_16)
 {
     if (!spi) {

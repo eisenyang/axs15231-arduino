@@ -42,7 +42,7 @@ void lcd_spi_draw_line(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint1
 void lcd_spi_draw_row(uint16_t y, uint16_t color);
 void lcd_spi_block_write_row(uint16_t y);
 void lcd_spi_write_color(uint16_t color);
-
+void lcd_spi_scroll_end(spi_transaction_t &t);
 /**
  * @brief 批量写入多个颜色数据到LCD
  * @param colors 16位颜色值数组

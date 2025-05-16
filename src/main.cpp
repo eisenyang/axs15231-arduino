@@ -11,6 +11,7 @@
 #define SCREEN_ROW 1 // 开屏行数
 #define SCROLL_ROW 1 // 滚屏行数
 #define ENABLE_SERIAL 0 // 是否开启串口打印
+void srcoll_screen(void);
 SpriteTextManager spriteTextManager;
 TruetypeManager truetypeManager;
 // 定义定时器句柄
@@ -26,11 +27,18 @@ volatile uint32_t interruptCount = 0;
 #define MAX_COUNTS 100
 volatile bool needPrintStats = false;
 volatile int64_t te_start_time = esp_timer_get_time();
+
+
+// 2. 定义统一的函数指针类型
+//typedef void (*FuncPtr)(FuncParam);
+
+
 typedef struct{
   uint16_t y_scroll_offset = 0;
   uint8_t availableIndex = 0;
   bool scrollCompleted = true;
   bool readCompleted = false;
+  bool scrollInit = false;
 }scroll_info_t;
 scroll_info_t scroll_info;
 void printInterruptTime(){
@@ -44,6 +52,8 @@ void printInterruptTime(){
     needPrintStats = false;
   }
 }
+
+
 void initSprite()
 {
   spriteTextManager.init();
@@ -57,35 +67,44 @@ void initSprite()
   Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
   Serial.printf("Flash Speed: %d Hz\n", ESP.getFlashChipSpeed());
 }
-void srcoll_screen(){
-  if(scroll_info.readCompleted){
+
+void scroll_init(uint16_t line_num,spi_transaction_t &t){
     scroll_info.readCompleted = false;
     if(address <= 0){
       address = LCD_HEIGHT;
     }
-    ulong startTime = micros();
-    spriteTextManager.scrollStart(address);
-    address = address - SCROLL_ROW;
-    ulong currentTime = micros();
-    //Serial.printf("scrollStart运行时间:%f\n",(currentTime-startTime)/1000.0);
-
-    if (scroll_info.y_scroll_offset >= HEIGHT_PIXELS)
-    {
-      scroll_info.y_scroll_offset = 0;
-      truetypeManager.resetFramebuffer(scroll_info.availableIndex);
-      if (scroll_info.availableIndex == 0)
-      {
-        scroll_info.availableIndex = 1;
-      }
-      else
-      {
-        scroll_info.availableIndex = 0;
-      }
-    }
-    scroll_info.y_scroll_offset++;
-    scroll_info.scrollCompleted = true;
-  }
+    lcd_spi_write_cmd(0x37);    
+    // 一次传输完成
+    lcd_spi_set_cs_low();
+    uint8_t data[2] = {(uint8_t)(line_num >> 8), (uint8_t)(line_num & 0xff)};
+    memset(&t, 0, sizeof(t));
+    t.length = 16;  // 一次传输所有数据
+    t.tx_buffer = data;
+    t.user = (void*)1; 
 }
+
+void scroll_completed(spi_transaction_t &t){
+  lcd_spi_scroll_end(t);
+  lcd_spi_set_cs_high();
+  address = address - SCROLL_ROW;
+  ulong currentTime = micros();
+  if (scroll_info.y_scroll_offset >= HEIGHT_PIXELS)
+  {
+    scroll_info.y_scroll_offset = 0;
+    truetypeManager.resetFramebuffer(scroll_info.availableIndex);
+    if (scroll_info.availableIndex == 0)
+    {
+      scroll_info.availableIndex = 1;
+    }
+    else
+    {
+      scroll_info.availableIndex = 0;
+    }
+  }
+  scroll_info.y_scroll_offset++;
+  scroll_info.scrollCompleted = true;
+}
+
 void writeBufToScreen(uint8_t *framebuffer, uint16_t y)
 {
   static uint16_t top_offset = 0;
@@ -212,18 +231,39 @@ void IRAM_ATTR handleRisingEdge() {
     interruptCount = 0;
   }
 }
-void te_irs_task(void *pvParameters){
-  // if (xSemaphoreTake(xMutex, 0) == pdTRUE) {  
-  //   //scrollEnabled = true;
-  //   scroll_info.teEnabled = true;
-  
-  //   xSemaphoreGive(xMutex);
-  // }
+void srcoll_screen(){
+  if(scroll_info.readCompleted){
+    scroll_info.readCompleted = false;
+    if(address <= 0){
+      address = LCD_HEIGHT;
+    }
+    ulong startTime = micros();
+    spriteTextManager.scrollStart(address);
+    address = address - SCROLL_ROW;
+    ulong currentTime = micros();
+    //Serial.printf("scrollStart运行时间:%f\n",(currentTime-startTime)/1000.0);
 
+    if (scroll_info.y_scroll_offset >= HEIGHT_PIXELS)
+    {
+      scroll_info.y_scroll_offset = 0;
+      truetypeManager.resetFramebuffer(scroll_info.availableIndex);
+      if (scroll_info.availableIndex == 0)
+      {
+        scroll_info.availableIndex = 1;
+      }
+      else
+      {
+        scroll_info.availableIndex = 0;
+      }
+    }
+    scroll_info.y_scroll_offset++;
+    scroll_info.scrollCompleted = true;
+  }
+}
+void te_irs_task(void *pvParameters){
 
   if (xSemaphoreTake(xMutex, 0) == pdTRUE)
     {
-      //printInterruptTime();
       int64_t current_time = esp_timer_get_time();
       int64_t te_time = current_time - te_start_time;
       if(te_time > 1000){
@@ -268,7 +308,7 @@ void setup()
   xTaskCreatePinnedToCore(TaskReadBufFromTruetype, "TaskReadBufFromTruetype", 8048, NULL, 1, NULL, 1);
   //xTaskCreatePinnedToCore(TaskScrollScreen, "TaskScrollScreen", 8048, NULL, 1, NULL, 1);
   if(true){
-    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(2), pdTRUE, NULL, TaskReadBuf2Screen);
+    xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(3), pdTRUE, NULL, TaskReadBuf2Screen);
       if (xTimer == NULL)
       {
         Serial.println("定时器创建失败！");

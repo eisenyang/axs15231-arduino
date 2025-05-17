@@ -7,7 +7,7 @@
 
 #pragma once
 #include "truetype_Arduino.h"
-#define BUF_COUNT  2
+#define BUF_COUNT  4
 #define QUEUE_LENGTH 2
 #define WIDTH_BYTES 20
 #define HEIGHT_PIXELS 160
@@ -21,11 +21,25 @@ typedef struct Framebuffer{
   uint8_t *framebuffer;
   bool hasData;
 } framebuffer_t;
+
+typedef struct {
+    wchar_t *wcs_str;
+    int str_len;    // 字符串长度
+    int group_num;  // 分组数量
+    int* group_len;  // 每个分组的长度
+} string_cache_t;
 class TruetypeManager{
   public:
     TruetypeManager();
     ~TruetypeManager();
+    bool init_classifier(string_cache_t* sc, const char* str, int m);
+    void free_classifier(string_cache_t *sc);
+    char* get_group_char(const string_cache_t* sc, int group, int index);
+
+
     bool initTruetype(const String& path, truetypeClass *truetype);
+    void readTextToAllFramebuffer();
+    
     uint8_t *readTextToFramebuffer();
     uint16_t getPixelColor(uint8_t *framebuffer, uint16_t x, uint16_t y);
     uint16_t getChineseUnicode(const String& character);

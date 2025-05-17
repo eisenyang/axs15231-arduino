@@ -7,6 +7,7 @@
 
 #include "LittleFS.h"
 #include "TruetypeManager.h"
+#include "lcd_spi_common.h"
 #include <TFT_eSPI.h>
 TruetypeManager::TruetypeManager()
 {
@@ -29,6 +30,171 @@ TruetypeManager::~TruetypeManager()
   // delete _truetype;
   freeAllFramebuffer();
 }
+// 初始化分类器 (只需调用一次)
+bool TruetypeManager::init_classifier(string_cache_t* sc, const char* str, int m) {
+    // 参数检查
+    if (!sc || !str || m <= 0) return false;
+
+    // 计算UTF-8字符数量和分配内存
+    const char* p = str;
+    int char_count = 0;
+    while (*p) {
+        if ((*p & 0x80) == 0) {
+            // ASCII
+            p += 1;
+        } else if ((*p & 0xE0) == 0xC0) {
+            // 2字节UTF-8
+            p += 2;
+        } else if ((*p & 0xF0) == 0xE0) {
+            // 3字节UTF-8
+            p += 3;
+        } else if ((*p & 0xF8) == 0xF0) {
+            // 4字节UTF-8
+            p += 4;
+        } else {
+            p += 1; // 跳过无效字节
+        }
+        char_count++;
+    }
+
+    // 如果字符串长度小于等于m，使用字符串长度作为分组数
+    int actual_groups = (char_count <= m) ? char_count : m;
+
+    // 分配内存
+    sc->wcs_str = (wchar_t*)malloc((char_count + 1) * sizeof(wchar_t));
+    if (!sc->wcs_str) return false;
+
+    // UTF-8转换为wchar_t
+    p = str;
+    int wchar_index = 0;
+    while (*p && wchar_index < char_count) {
+        uint32_t unicode = 0;
+        if ((*p & 0x80) == 0) {
+            // ASCII
+            unicode = *p;
+            p += 1;
+        } else if ((*p & 0xE0) == 0xC0 && *(p+1)) {
+            // 2字节UTF-8
+            unicode = ((*p & 0x1F) << 6) | (*(p+1) & 0x3F);
+            p += 2;
+        } else if ((*p & 0xF0) == 0xE0 && *(p+1) && *(p+2)) {
+            // 3字节UTF-8 (中文)
+            unicode = ((*p & 0x0F) << 12) | ((*(p+1) & 0x3F) << 6) | (*(p+2) & 0x3F);
+            p += 3;
+        } else if ((*p & 0xF8) == 0xF0 && *(p+1) && *(p+2) && *(p+3)) {
+            // 4字节UTF-8
+            unicode = ((*p & 0x07) << 18) | ((*(p+1) & 0x3F) << 12) | 
+                     ((*(p+2) & 0x3F) << 6) | (*(p+3) & 0x3F);
+            p += 4;
+        } else {
+            p += 1; // 跳过无效字节
+            continue;
+        }
+        sc->wcs_str[wchar_index++] = unicode;
+    }
+    sc->wcs_str[wchar_index] = 0; // 添加结束符
+
+    // 存储基本信息
+    sc->str_len = char_count;
+    sc->group_num = actual_groups;  // 使用实际的分组数
+    
+    // 分配组长度数组
+    sc->group_len = (int*)malloc(actual_groups * sizeof(int));
+    if (!sc->group_len) {
+        free(sc->wcs_str);
+        return false;
+    }
+
+    // 初始化每个组的长度为0
+    for (int i = 0; i < actual_groups; i++) {
+        sc->group_len[i] = 0;
+    }
+
+    // 计算每个组实际包含的字符数
+    for (int i = 0; i < char_count; i++) {
+        int group = i % actual_groups;  // 字符属于哪个组
+        sc->group_len[group]++;  // 该组的长度加1
+    }
+
+    // 打印调试信息
+    // Serial.print("Total characters: ");
+    // Serial.println(char_count);
+    // Serial.print("Actual groups: ");
+    // Serial.println(actual_groups);
+    // for (int i = 0; i < actual_groups; i++) {
+    //     Serial.print("Group ");
+    //     Serial.print(i);
+    //     Serial.print(" length: ");
+    //     Serial.println(sc->group_len[i]);
+    // }
+
+    return true;
+}
+// 核心查询函数 (高频调用)
+char* TruetypeManager::get_group_char(const string_cache_t* sc, int group, int index) {
+    // 参数检查
+    if (!sc || group < 0 || index < 0) {
+        return nullptr;
+    }
+
+    // 检查组号是否超出范围
+    if (group >= sc->group_num) {
+        return nullptr;
+    }
+
+    // 检查索引是否超出该组的实际长度
+    if (index >= sc->group_len[group]) {
+        return nullptr;
+    }
+
+    // 计算实际位置：index * m + group
+    int pos = index * sc->group_num + group;
+    
+    // 检查是否超出总字符串长度
+    if (pos >= sc->str_len) {
+        return nullptr;
+    }
+
+    // 获取Unicode码点
+    wchar_t ch = sc->wcs_str[pos];
+    
+    // 分配静态缓冲区
+    static char utf8_buf[4];
+    
+    // 转换为UTF-8
+    if (ch <= 0x7F) {
+        utf8_buf[0] = ch;
+        utf8_buf[1] = '\0';
+    } else if (ch <= 0x7FF) {
+        utf8_buf[0] = 0xC0 | (ch >> 6);
+        utf8_buf[1] = 0x80 | (ch & 0x3F);
+        utf8_buf[2] = '\0';
+    } else {
+        utf8_buf[0] = 0xE0 | (ch >> 12);
+        utf8_buf[1] = 0x80 | ((ch >> 6) & 0x3F);
+        utf8_buf[2] = 0x80 | (ch & 0x3F);
+        utf8_buf[3] = '\0';
+    }
+
+    return utf8_buf;
+}
+
+// 释放分类器资源
+void TruetypeManager::free_classifier(string_cache_t* sc) {
+    if (sc) {
+        free(sc->wcs_str);
+        free(sc->group_len);
+    }
+}
+
+
+
+
+
+
+
+
+
 
 framebuffer_t *TruetypeManager::getFramebuffer(uint8_t index)
 {
@@ -59,7 +225,7 @@ bool TruetypeManager::initTruetype(const String &path, truetypeClass *truetype)
     return false;
   }
 
-  _truetype.setCharacterSize(160);
+  _truetype.setCharacterSize(WIDTH_PIXELS);
   _truetype.setTextBoundary(0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
   _truetype.setCharacterSpacing(0);
   _truetype.setTextColor(0x01, 0x01);
@@ -68,6 +234,8 @@ bool TruetypeManager::initTruetype(const String &path, truetypeClass *truetype)
     Serial.println("truetype is nullptr");
     truetype = &_truetype;
   }
+
+
   return true;
 }
 
@@ -91,14 +259,30 @@ bool TruetypeManager::checkFileExists(const char *filename)
   }
 }
 
+// void TruetypeManager::readTextToAllFramebuffer()
+// {
+//   for(int i = 0; i < BUF_COUNT; i++){
+//     //readTextToFramebuffer(i);
+//     framebuffer_t *framebuffer_t = &_framebuffers[i];
+//     bool hasData = framebuffer_t->hasData;
+//     if(hasData){
+//       continue;
+//     }
+//     uint8_t *framebuffer = framebuffer_t->framebuffer;
+//     memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+//     _truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer);
+//     _truetype.textDraw(0, 0, str);
+//     framebuffer_t->hasData = true;
+//   }
+// }
+
 uint8_t *TruetypeManager::readTextToFramebuffer()
 {
   //static String draw_string[] = {"以", "无", "所", "得", "故", "，", "菩", "提", "萨", "埵", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "心", "无", "罣", "碍", "；", "无", "罣", "碍", "故", "，", "无", "有", "恐", "怖", "，", "远", "离", "颠", "倒", "梦", "想", "，", "究", "竟", "涅", "槃", "。", "三", "世", "诸", "佛", "，", "依", "般", "若", "波", "罗", "蜜", "多", "故", "，", "得", "阿", "耨", "多", "罗", "三", "藐", "三", "菩", "提", "。"};
   
   unsigned long startTime = micros();
-  String str = _draw_strings[_draw_string_index];  
-  uint8_t index = _framebuffer_index;
-  framebuffer_t *framebuffer_t = &_framebuffers[index];
+  String str = _draw_strings[_draw_string_index];   
+  framebuffer_t *framebuffer_t = &_framebuffers[_framebuffer_index];
   bool hasData = framebuffer_t->hasData;
   if(hasData){
     //vTaskDelay();
@@ -113,12 +297,19 @@ uint8_t *TruetypeManager::readTextToFramebuffer()
   {
     _draw_string_index = 0;
   }
-  if(_framebuffer_index == 0){
-    _framebuffer_index = 1;
-  }
-  else{
+  if( _framebuffer_index >= BUF_COUNT - 1){
     _framebuffer_index = 0;
   }
+  else{
+    _framebuffer_index++;
+  }
+  
+  // if(_framebuffer_index == 0){
+  //   _framebuffer_index = 1;
+  // }
+  // else{
+  //   _framebuffer_index = 0;
+  // }
   framebuffer_t->hasData = true;
   return framebuffer;
 }

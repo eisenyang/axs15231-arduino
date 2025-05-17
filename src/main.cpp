@@ -53,7 +53,15 @@ void printInterruptTime(){
   }
 }
 
-
+void setAvailableIndex(scroll_info_t &scroll_info){
+  if(scroll_info.availableIndex >= BUF_COUNT - 1){
+    scroll_info.availableIndex = 0;
+  }
+  else{
+    scroll_info.availableIndex++;
+  }
+  
+}
 void initSprite()
 {
   spriteTextManager.init();
@@ -92,14 +100,7 @@ void scroll_completed(spi_transaction_t &t){
   {
     scroll_info.y_scroll_offset = 0;
     truetypeManager.resetFramebuffer(scroll_info.availableIndex);
-    if (scroll_info.availableIndex == 0)
-    {
-      scroll_info.availableIndex = 1;
-    }
-    else
-    {
-      scroll_info.availableIndex = 0;
-    }
+    setAvailableIndex(scroll_info);
   }
   scroll_info.y_scroll_offset++;
   scroll_info.scrollCompleted = true;
@@ -118,14 +119,12 @@ void writeBufToScreen(uint8_t *framebuffer, uint16_t y)
       if(ENABLE_SERIAL){
         Serial.printf("%d行写入开始，当前写入的行:%s",SCREEN_ROW,String(y));
       }
-      //spriteTextManager.enableWriteColor();
     }
 
-    // 一个循环就是一行
+     // 一次准备一整行的数据
     
     static uint16_t color_buffer[LCD_WIDTH];  // 用于批量传输的缓冲区
 
-      // 一次准备一整行的数据
     for (int x = 0; x < LCD_WIDTH; x++)
     {
         if (y < HEIGHT_PIXELS && x < WIDTH_PIXELS)
@@ -193,14 +192,13 @@ void TaskScrollScreen(void *pvParameters)
       srcoll_screen();
       xSemaphoreGive(xMutex);
     }
-    //vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
 void TaskReadBufFromTruetype(void *pvParameters)
 {
 
   TickType_t xLastWakeTime;
-  const TickType_t xFrequency = pdMS_TO_TICKS(20); // 2毫秒
+  const TickType_t xFrequency = pdMS_TO_TICKS(10); // 2毫秒
   // 获取当前时间（系统启动后的 tick 数）
   xLastWakeTime = xTaskGetTickCount();
   while (1)
@@ -241,20 +239,11 @@ void srcoll_screen(){
     spriteTextManager.scrollStart(address);
     address = address - SCROLL_ROW;
     ulong currentTime = micros();
-    //Serial.printf("scrollStart运行时间:%f\n",(currentTime-startTime)/1000.0);
-
     if (scroll_info.y_scroll_offset >= HEIGHT_PIXELS)
     {
       scroll_info.y_scroll_offset = 0;
       truetypeManager.resetFramebuffer(scroll_info.availableIndex);
-      if (scroll_info.availableIndex == 0)
-      {
-        scroll_info.availableIndex = 1;
-      }
-      else
-      {
-        scroll_info.availableIndex = 0;
-      }
+      setAvailableIndex(scroll_info);
     }
     scroll_info.y_scroll_offset++;
     scroll_info.scrollCompleted = true;
@@ -266,7 +255,7 @@ void te_irs_task(void *pvParameters){
     {
       int64_t current_time = esp_timer_get_time();
       int64_t te_time = current_time - te_start_time;
-      if(te_time > 1000){
+      if(te_time > 2000){
         srcoll_screen();
         te_start_time = current_time;
       }
@@ -281,6 +270,8 @@ void setup()
     delay(100);
   }
 
+
+
   xMutex = xSemaphoreCreateMutex();
   static ulong lastTime = millis();
   initSprite();
@@ -294,16 +285,16 @@ void setup()
   //String draw_strings[] = {"可"};
   //static String draw_string[] = {"I","L","Y","H"};
   //static String draw_string[] = {"我","爱","你","!"};
-  static const char draw_string[] = 
-  "觀自在菩薩，行深般若波羅蜜多時，照見五蘊皆空，度一切苦厄。"
-  "舍利子，色不異空，空不異色，色即是空，空即是色，受想行識亦復如是。"
-  "舍利子，是諸法空相，不生不滅，不垢不淨，不增不減。"
-  "是故空中無色，無受想行識，無眼耳鼻舌身意，無色聲香味觸法，無眼界乃至無意識界，無無明亦無無明盡，乃至無老死，亦無老死盡，無苦集滅道，無智亦無得，以無所得故。"
-  "菩提薩埵，依般若波羅蜜多故，心無掛礙；無掛礙故，無有恐怖，遠離顛倒夢想，究竟涅槃。"
-  "三世諸佛，依般若波羅蜜多故，得阿耨多羅三藐三菩提。"
-  "故知般若波羅蜜多，是大神咒，是大明咒，是無上咒，是無等等咒，能除一切苦，真實不虛。"
-  "故說般若波羅蜜多咒，即說咒曰：揭諦揭諦，波羅揭諦，波羅僧揭諦，菩提薩婆訶。!!!";
-  
+  const char* draw_string = 
+  "觀自在菩薩，行";
+  const int m = 30;
+  string_cache_t sc;
+  if(!truetypeManager.init_classifier(&sc, draw_string, m)){
+    Serial.println("init_classifier failed");
+    return;
+  }
+  Serial.println(sc.group_num);
+
   truetypeManager.setDrawString(draw_string);
   xTaskCreatePinnedToCore(TaskReadBufFromTruetype, "TaskReadBufFromTruetype", 8048, NULL, 1, NULL, 1);
   //xTaskCreatePinnedToCore(TaskScrollScreen, "TaskScrollScreen", 8048, NULL, 1, NULL, 1);

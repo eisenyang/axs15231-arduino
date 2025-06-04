@@ -7,7 +7,7 @@
 
 #pragma once
 #include "truetype_Arduino.h"
-#define BUF_COUNT  4
+#define BUF_COUNT  5
 #define QUEUE_LENGTH 2
 #define WIDTH_BYTES 20
 #define HEIGHT_PIXELS 160
@@ -27,6 +27,7 @@ typedef struct {
     int str_len;    // 字符串长度
     int group_num;  // 分组数量
     int* group_len;  // 每个分组的长度
+    int* read_index;  // 每个分组读取的索引
 } string_cache_t;
 class TruetypeManager{
   public:
@@ -34,8 +35,8 @@ class TruetypeManager{
     ~TruetypeManager();
     bool init_classifier(string_cache_t* sc, const char* str, int m);
     void free_classifier(string_cache_t *sc);
+    char* get_group_char(const string_cache_t* sc, int group);
     char* get_group_char(const string_cache_t* sc, int group, int index);
-
 
     bool initTruetype(const String& path, truetypeClass *truetype);
     void readTextToAllFramebuffer();
@@ -46,7 +47,6 @@ class TruetypeManager{
     bool checkFileExists(const char *filename);
     framebuffer_t *getFramebuffer(uint8_t index);
     bool resetFramebuffer(uint8_t index);
-    void setDrawString(const String drawStrings[]);
     void setDrawString(const char *drawString);
     //void setFramebuffer(uint8_t index, uint8_t *framebuffer);
     void freeFramebuffer(uint8_t index);
@@ -63,4 +63,5 @@ class TruetypeManager{
     uint16_t _draw_string_index = 0;
     uint8_t _framebuffer_index = 0;
     framebuffer_t _framebuffers[BUF_COUNT];
+    string_cache_t _string_cache_t;
 };

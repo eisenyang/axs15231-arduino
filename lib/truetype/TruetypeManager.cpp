@@ -105,6 +105,13 @@ bool TruetypeManager::init_classifier(string_cache_t* sc, const char* str, int m
         return false;
     }
 
+    // 分配读取索引数组
+    sc->read_index = (int*)malloc(actual_groups * sizeof(int));
+    if (!sc->read_index) {
+        free(sc->group_len);
+        free(sc->wcs_str);
+        return false;
+    }
     // 初始化每个组的长度为0
     for (int i = 0; i < actual_groups; i++) {
         sc->group_len[i] = 0;
@@ -117,21 +124,22 @@ bool TruetypeManager::init_classifier(string_cache_t* sc, const char* str, int m
     }
 
     // 打印调试信息
-    // Serial.print("Total characters: ");
-    // Serial.println(char_count);
-    // Serial.print("Actual groups: ");
-    // Serial.println(actual_groups);
-    // for (int i = 0; i < actual_groups; i++) {
-    //     Serial.print("Group ");
-    //     Serial.print(i);
-    //     Serial.print(" length: ");
-    //     Serial.println(sc->group_len[i]);
-    // }
+    Serial.print("Total characters: ");
+    Serial.println(char_count);
+    Serial.print("Actual groups: ");
+    Serial.println(actual_groups);
+    for (int i = 0; i < actual_groups; i++) {
+        Serial.print("Group ");
+        Serial.print(i);
+        Serial.print(" length: ");
+        Serial.println(sc->group_len[i]);
+    }
 
     return true;
 }
-// 核心查询函数 (高频调用)
 char* TruetypeManager::get_group_char(const string_cache_t* sc, int group, int index) {
+
+
     // 参数检查
     if (!sc || group < 0 || index < 0) {
         return nullptr;
@@ -176,6 +184,59 @@ char* TruetypeManager::get_group_char(const string_cache_t* sc, int group, int i
         utf8_buf[3] = '\0';
     }
 
+    return utf8_buf;
+}
+// 核心查询函数 (高频调用)
+char* TruetypeManager::get_group_char(const string_cache_t* sc, int group) {
+  int index = sc->read_index[group];
+  
+  if(sc->read_index[group] >= sc->group_len[group]){
+    sc->read_index[group] = 0;
+  }
+    // 参数检查
+    if (!sc || group < 0 || index < 0) {
+        return nullptr;
+    }
+
+    // 检查组号是否超出范围
+    if (group >= sc->group_num) {
+        return nullptr;
+    }
+
+    // 检查索引是否超出该组的实际长度
+    if (index >= sc->group_len[group]) {
+        return nullptr;
+    }
+
+    // 计算实际位置：index * m + group
+    int pos = index * sc->group_num + group;
+    
+    // 检查是否超出总字符串长度
+    if (pos >= sc->str_len) {
+        return nullptr;
+    }
+
+    // 获取Unicode码点
+    wchar_t ch = sc->wcs_str[pos];
+    
+    // 分配静态缓冲区
+    static char utf8_buf[4];
+    
+    // 转换为UTF-8
+    if (ch <= 0x7F) {
+        utf8_buf[0] = ch;
+        utf8_buf[1] = '\0';
+    } else if (ch <= 0x7FF) {
+        utf8_buf[0] = 0xC0 | (ch >> 6);
+        utf8_buf[1] = 0x80 | (ch & 0x3F);
+        utf8_buf[2] = '\0';
+    } else {
+        utf8_buf[0] = 0xE0 | (ch >> 12);
+        utf8_buf[1] = 0x80 | ((ch >> 6) & 0x3F);
+        utf8_buf[2] = 0x80 | (ch & 0x3F);
+        utf8_buf[3] = '\0';
+    }
+    sc->read_index[group]++;
     return utf8_buf;
 }
 
@@ -259,22 +320,25 @@ bool TruetypeManager::checkFileExists(const char *filename)
   }
 }
 
-// void TruetypeManager::readTextToAllFramebuffer()
-// {
-//   for(int i = 0; i < BUF_COUNT; i++){
-//     //readTextToFramebuffer(i);
-//     framebuffer_t *framebuffer_t = &_framebuffers[i];
-//     bool hasData = framebuffer_t->hasData;
-//     if(hasData){
-//       continue;
-//     }
-//     uint8_t *framebuffer = framebuffer_t->framebuffer;
-//     memset(framebuffer, 0, FRAMEBUFFER_SIZE);
-//     _truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer);
-//     _truetype.textDraw(0, 0, str);
-//     framebuffer_t->hasData = true;
-//   }
-// }
+void TruetypeManager::readTextToAllFramebuffer()
+{
+  for(int i = 0; i < BUF_COUNT; i++){
+    //readTextToFramebuffer(i);
+    String str = get_group_char(&_string_cache_t, i);
+    framebuffer_t *framebuffer_t = &_framebuffers[i];
+    bool hasData = framebuffer_t->hasData;
+    Serial.println("str-->:" + str);
+    if(hasData){
+      continue;
+    }
+    uint8_t *framebuffer = framebuffer_t->framebuffer;
+    memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+    _truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer);
+    _truetype.textDraw(0, 0, str);
+    //Serial.println("str-->:" + str);
+    framebuffer_t->hasData = true;
+  }
+}
 
 uint8_t *TruetypeManager::readTextToFramebuffer()
 {
@@ -292,6 +356,8 @@ uint8_t *TruetypeManager::readTextToFramebuffer()
   memset(framebuffer, 0, FRAMEBUFFER_SIZE);
   _truetype.setFramebuffer(DISPLAY_WIDTH, DISPLAY_HEIGHT, BITS_PER_PIXEL, 0, framebuffer);
   _truetype.textDraw(0, 0, str);
+
+  //Serial.println("str:" + str);
   _draw_string_index++;
   if (_draw_string_index >= _draw_strings_length)
   {
@@ -670,32 +736,16 @@ void TruetypeManager::freeAllFramebuffer()
     freeFramebuffer(i);
   }
 }
-void TruetypeManager::setDrawString(const String drawStrings[])
-{
-  // Calculate the length by finding the first null element
-  uint16_t length = 0;
-  while (drawStrings[length].length() > 0 && length < MAX_DRAW_STRINGS) {
-    length++;
-  }
-  
-  // Copy the new strings
-  for (int i = 0; i < length; i++) {
-    _draw_strings[i] = drawStrings[i];
-  }
-  
-  // Update the length and reset the index
-  _draw_strings_length = length;
-  _draw_string_index = 0;
-  
-  Serial.print("Set new draw strings with length: ");
-  Serial.println(_draw_strings_length);
-}
 void TruetypeManager::setDrawString(const char *drawString) {
   if (drawString == nullptr || strlen(drawString) == 0) {
     Serial.println("Error: Empty string provided");
     return;
   }
-  
+  free_classifier(&_string_cache_t);
+  if(!init_classifier(&_string_cache_t, drawString, BUF_COUNT)){
+    Serial.println("init_classifier failed");
+    return;
+  }
   uint16_t length = 0;
   uint16_t i = 0;
   uint16_t byteIndex = 0;

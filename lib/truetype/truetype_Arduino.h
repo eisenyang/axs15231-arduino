@@ -13,6 +13,7 @@
 
 #if defined ESP32 || ESP8266
 #include "FS.h"
+#include "SD.h"
 #endif /*FS_H*/
 
 #define FLAG_ONCURVE (1 << 0)  // 曲线

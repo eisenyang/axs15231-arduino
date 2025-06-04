@@ -38,3 +38,11 @@ ESP32-S3-A10芯片使用以下分区方案:
 | ota_0    | app  | 0x20000 | 3.5MB | 应用程序分区1 |
 | ota_1    | app  | 0x3A0000| 3.5MB | 应用程序分区2 |
 | storage  | data | 0x720000| 8.875MB | 文件系统存储 | 
+
+
+
+
+## 显示屏支持TE模式的命令及参数
+    命令：0x35
+    参数：0/1（0：只有V-blanking，1：v-blanking与h-blanking）
+    文档：

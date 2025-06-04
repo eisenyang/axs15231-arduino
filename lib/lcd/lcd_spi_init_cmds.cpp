@@ -589,7 +589,7 @@ void lcd_spi_init_cmds()
 
     //lcd_spi_write_cmd(0x34);
     lcd_spi_write_cmd(0x35);
-    lcd_spi_write_data(0x01); // 0-model1，2-model2
+    lcd_spi_write_data(0x01); // 0-model1，1-model2
     //delay(200);
     esp_rom_delay_us(200000);  // 200ms
     lcd_spi_write_cmd(0x11);

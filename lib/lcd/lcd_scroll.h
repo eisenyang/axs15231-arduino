@@ -23,7 +23,7 @@ void set_scroll_string(const char *str);
 void srcoll_screen();
 void set_available_index(scroll_info_t &scroll_info);
 void te_irs_task(void *pvParameters);
-void task_read_buf_from_truetype(void *pvParameters);
-void task_read_buf_to_screen(TimerHandle_t pxTimer);
+void read_buf_from_truetype_task(void *pvParameters);
+void read_buf_to_screen_task(TimerHandle_t pxTimer);
 void write_buf_to_screen(uint8_t *framebuffer, uint16_t y);
 #endif

@@ -1,13 +1,14 @@
+//https://github.com/espressif/esp-idf/tree/v5.4.1/examples/peripherals/spi_master/lcd
 #include "lcd_scroll.h"
+#define SCROLL_ROW 1 // 滚屏行数
+#define SCREEN_ROW 1 // 开屏行数
+#define MY_TTF "/AlibabaPuHuiTi-3-35-Thin.ttf"
 scroll_info_t _scroll_info;
 SpriteTextManager _spriteTextManager;
 TruetypeManager _truetypeManager;
 TimerHandle_t _xTimer;
 SemaphoreHandle_t _xMutex;
 uint64_t te_start_time=0;
-#define SCROLL_ROW 1 // 滚屏行数
-#define SCREEN_ROW 1 // 开屏行数
-#define MY_TTF "/AlibabaPuHuiTi-3-35-Thin.ttf"
 static uint16_t _address = LCD_HEIGHT;
 void set_scroll_string(const char *str){
     _truetypeManager.setDrawString(str);
@@ -23,9 +24,9 @@ bool init_scroll(){
     _spriteTextManager.fillScreen(TFT_BLACK);
     _spriteTextManager.setScrollWindow(0, LCD_HEIGHT, 0);
     _xMutex = xSemaphoreCreateMutex();
-    xTaskCreatePinnedToCore(task_read_buf_from_truetype, "task_read_buf_from_truetype", 8048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(read_buf_from_truetype_task, "read_buf_from_truetype_task", 8048, NULL, 1, NULL, 1);
 
-    _xTimer = xTimerCreate("MyTimer", pdMS_TO_TICKS(2), pdTRUE, NULL, task_read_buf_to_screen);
+    _xTimer = xTimerCreate("read_buf_to_screen_task", pdMS_TO_TICKS(2), pdTRUE, NULL, read_buf_to_screen_task);
     if (_xTimer == NULL)
     {
         Serial.println("定时器创建失败！");
@@ -42,7 +43,7 @@ bool init_scroll(){
 void start_scroll(){
     lcd_spi_set_te_callback(te_irs_task);
 }
-void task_read_buf_from_truetype(void *pvParameters)
+void read_buf_from_truetype_task(void *pvParameters)
 {
 
   TickType_t xLastWakeTime;
@@ -100,7 +101,7 @@ void te_irs_task(void *pvParameters){
     }
 }
 
-void task_read_buf_to_screen(TimerHandle_t pxTimer)
+void read_buf_to_screen_task(TimerHandle_t pxTimer)
 {
 
   //printInterruptTime();

@@ -1,5 +1,5 @@
 //https://github.com/espressif/esp-idf/tree/v5.4.1/examples/peripherals/spi_master/lcd
-#include "lcd_scroll.h"
+#include "lcd_text_scroll.h"
 #define SCROLL_ROW 1 // 滚屏行数
 #define SCREEN_ROW 1 // 开屏行数
 #define MY_TTF "/AlibabaPuHuiTi-3-35-Thin.ttf"
@@ -13,7 +13,7 @@ static uint16_t _address = LCD_HEIGHT;
 void set_scroll_string(const char *str){
     _truetypeManager.setDrawString(str);
 }
-bool init_scroll(){
+bool init_text_scroll(){
 
     while (!_truetypeManager.initTruetype(MY_TTF, nullptr))
     {
@@ -40,7 +40,7 @@ bool init_scroll(){
     }
     return true;
 }
-void start_scroll(){
+void start_text_scroll(){
     lcd_spi_set_te_callback(te_irs_task);
 }
 void read_buf_from_truetype_task(void *pvParameters)
@@ -57,7 +57,7 @@ void read_buf_from_truetype_task(void *pvParameters)
     //vTaskDelay(pdMS_TO_TICKS(2));
   }
 }
-void srcoll_screen(){
+void scroll_screen_address(){
     if(_scroll_info.readCompleted){
         _scroll_info.readCompleted = false;
         if(_address <= 0){
@@ -94,7 +94,7 @@ void te_irs_task(void *pvParameters){
       int64_t current_time = esp_timer_get_time();
       int64_t te_time = current_time - te_start_time;
       if(te_time > 2000){
-        srcoll_screen();
+        scroll_screen_address();
         te_start_time = current_time;
       }
       xSemaphoreGive(_xMutex);

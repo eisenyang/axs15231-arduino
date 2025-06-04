@@ -1,4 +1,4 @@
-#include "lcd_scroll.h"
+#include "lcd_text_scroll.h"
 void setup()
 {
   Serial.begin(115200);
@@ -8,7 +8,7 @@ void setup()
   }
 
 
-  init_scroll();
+  init_text_scroll();
   static const char draw_string[] = 
   "觀自在菩薩，行深般若波羅蜜多時，照見五蘊皆空，度一切苦厄。"
   "舍利子，色不異空，空不異色，色即是空，空即是色，受想行識亦復如是。"
@@ -19,7 +19,7 @@ void setup()
   "故知般若波羅蜜多，是大神咒，是大明咒，是無上咒，是無等等咒，能除一切苦，真實不虛。"
   "故說般若波羅蜜多咒，即說咒曰：揭諦揭諦，波羅揭諦，波羅僧揭諦，菩提薩婆訶。!!!";
   set_scroll_string(draw_string);
-  start_scroll();
+  start_text_scroll();
 }
 
 void loop()

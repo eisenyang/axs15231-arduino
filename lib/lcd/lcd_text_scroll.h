@@ -1,5 +1,5 @@
-#ifndef __LCD_SCROLL_H__
-#define __LCD_SCROLL_H__
+#ifndef __LCD_TEXT_SCROLL_H__
+#define __LCD_TEXT_SCROLL_H__
 #include <LittleFS.h>
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
@@ -17,10 +17,10 @@ typedef struct{
   bool readCompleted = false;
   bool scrollInit = false;
 }scroll_info_t;
-bool init_scroll();
-void start_scroll();
+bool init_text_scroll();
+void start_text_scroll();
 void set_scroll_string(const char *str);
-void srcoll_screen();
+void scroll_screen_address();
 void set_available_index(scroll_info_t &scroll_info);
 void te_irs_task(void *pvParameters);
 void read_buf_from_truetype_task(void *pvParameters);
